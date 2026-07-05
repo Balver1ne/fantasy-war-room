@@ -21,21 +21,48 @@ Configuration via environment variables with the `WARROOM_` prefix (or a `.env` 
 
 Tests: `pytest`
 
+## Following a draft (Phase 1)
+
+1. Start the server: `python -m warroom`. First start syncs the ~12k-player Sleeper
+   universe into `data/warroom.db` (a few seconds).
+2. Open `http://127.0.0.1:8734/debug` — paste a Sleeper draft id (or use curl below),
+   enter your draft slot, click **Start session**.
+   ```bash
+   curl -X POST http://127.0.0.1:8734/api/drafts/<draft_id>/session \
+        -H "content-type: application/json" -d '{"my_slot": 4}'
+   curl -N http://127.0.0.1:8734/api/drafts/<draft_id>/events   # raw SSE stream
+   ```
+   The draft id is in the Sleeper URL: `sleeper.com/draft/nfl/<draft_id>`. A full URL
+   pasted as the id also works.
+3. Picks appear in the server terminal and on the SSE stream within one 2-second poll.
+   `STALE` / `RECOVERED` lines flag connectivity problems — never trust a stale board.
+4. Restart-safe: kill the server mid-draft, start it again, re-POST the session — it
+   resyncs the full pick list from Sleeper within one poll.
+
 ## Phase status
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Repo + Sleeper plumbing (live pick polling, SSE, resume-safe state) | in progress |
+| 1 | Repo + Sleeper plumbing (live pick polling, SSE, resume-safe state) | built; awaiting live mock-draft acceptance |
 | 2 | Ingestion + player matching | — |
 | 3 | Recommendation engine | — |
 | 4 | Draft Room UI | — |
 | 5 | Multi-league + polish | — |
 
+### Phase 1 acceptance run (do this once against a live mock)
+
+1. `pytest` → all green.
+2. `python -m warroom`; on sleeper.com create a **mock draft** (12-team, 15 rounds;
+   do one run with 3rd-round reversal ON to confirm the order math empirically).
+3. Start a session with your slot (step 2 above) and open `/debug`.
+4. Verify every pick appears within 2–3 s of being made in Sleeper.
+5. Mid-draft: Ctrl-C the server, restart, re-POST the session → RESYNC shows the correct
+   cumulative pick count within one poll.
+6. Mid-draft: kill Wi-Fi ~20 s → STALE banner + backoff; restore → RECOVERED + resync.
+
 ## Draft day checklist
 
-(Filled in as phases complete.)
-
-1. Refresh player universe: `curl -X POST http://127.0.0.1:8734/api/players/sync?force=true`
+1. Refresh player universe: `curl -X POST "http://127.0.0.1:8734/api/players/sync?force=true"`
 2. Import latest rankings (Phase 2+)
 3. Confirm league scoring preset (Phase 5)
 4. Run one mock draft end-to-end

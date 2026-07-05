@@ -1,4 +1,6 @@
+import contextlib
 import logging
+import sys
 
 
 def configure_logging(level: str = "INFO") -> None:
@@ -8,6 +10,12 @@ def configure_logging(level: str = "INFO") -> None:
     through the ``warroom.draft`` logger and must stand out; everything else is
     quiet background noise.
     """
+    # Windows consoles default to cp1252, which garbles the log glyphs.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            with contextlib.suppress(Exception):
+                stream.reconfigure(encoding="utf-8")
+
     root = logging.getLogger()
     root.setLevel(level.upper())
     handler = logging.StreamHandler()

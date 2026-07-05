@@ -24,6 +24,13 @@ STATIC_DIR = Path(__file__).parent / "static"
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
 
+    # Use the OS certificate store for TLS. Python's bundled CA list rejects this
+    # machine's TLS path (AV/proxy interception is common on Windows); the system
+    # store trusts it.
+    import truststore
+
+    truststore.inject_into_ssl()
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         engine = make_engine(settings.db_path)
@@ -46,6 +53,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         # Warm the player universe without blocking server readiness.
         sync_task = asyncio.create_task(player_sync.ensure_fresh())
+
+        def _report_sync_result(task: asyncio.Task) -> None:
+            if not task.cancelled() and task.exception() is not None:
+                log.error(
+                    "Startup player sync failed: %s — retry via POST /api/players/sync?force=true",
+                    task.exception(),
+                )
+
+        sync_task.add_done_callback(_report_sync_result)
         log.info("War Room ready on http://%s:%s (debug console at /debug)",
                  settings.host, settings.port)
         try:

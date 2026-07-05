@@ -42,6 +42,10 @@ deliverable is unproven. Matching quality is the app.
   passes, then tag (`2026.1` … `2026.5`).
 
 ## Current state
-- Phase 1 in progress on branch `phase-1-sleeper-plumbing`: repo scaffold + Sleeper
-  plumbing (player universe sync, league/draft fetch, live pick polling + SSE, resume-safe
-  state). Deliverable: picks visible in terminal/SSE within 2–3 s of a Sleeper mock draft.
+- Phase 1 built on branch `phase-1-sleeper-plumbing`: Sleeper adapter behind
+  PlatformAdapter, player universe sync (verified live: ~12k players), draft session
+  poll loop with diff/resync/backoff, SSE + `/debug` console, snake/3RR/traded-pick
+  math, 72 passing tests. Awaiting the live mock-draft acceptance run (README) before
+  merging to `main` and tagging `2026.1`.
+- TLS note: this machine's TLS path is intercepted (AV/proxy), so `create_app` calls
+  `truststore.inject_into_ssl()` to use the Windows cert store. Don't remove it.
