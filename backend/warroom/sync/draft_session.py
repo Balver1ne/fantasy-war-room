@@ -284,11 +284,15 @@ class DraftSession:
                         self._emit("status", {"from": self.status, "to": "complete"})
                     break
 
-                try:
-                    await asyncio.wait_for(self._stopping.wait(), timeout=delay)
-                except TimeoutError:
-                    pass
+                await self._sleep(delay)
         except asyncio.CancelledError:
+            pass
+
+    async def _sleep(self, delay: float) -> None:
+        """Interruptible wait between polls; overridden in tests to capture delays."""
+        try:
+            await asyncio.wait_for(self._stopping.wait(), timeout=delay)
+        except TimeoutError:
             pass
 
     # ---- payloads / logging ----------------------------------------------

@@ -21,6 +21,8 @@ _DRAFT_ID = re.compile(r"(\d{6,})")
 
 
 def _clean_draft_id(raw: str) -> str:
+    if "/" not in raw:
+        return raw  # bare id — pass through, whatever the platform's id shape is
     match = _DRAFT_ID.search(raw)
     if not match:
         raise HTTPException(status_code=400, detail=f"Cannot parse draft id from {raw!r}")

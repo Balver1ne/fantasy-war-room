@@ -1,0 +1,28 @@
+[
+  {
+    "league_id": "222222222222222222",
+    "name": "Synthetic Half PPR League",
+    "season": "2026",
+    "status": "pre_draft",
+    "sport": "nfl",
+    "total_rosters": 12,
+    "settings": {"type": 0, "num_teams": 12},
+    "scoring_settings": {"rec": 0.5, "pass_td": 4.0},
+    "roster_positions": ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF", "BN"],
+    "draft_id": "333333333333333333",
+    "avatar": null
+  },
+  {
+    "league_id": "444444444444444444",
+    "name": "Synthetic Dynasty PPR League",
+    "season": "2026",
+    "status": "in_season",
+    "sport": "nfl",
+    "total_rosters": 10,
+    "settings": {"type": 2, "num_teams": 10},
+    "scoring_settings": {"rec": 1.0, "pass_td": 6.0},
+    "roster_positions": ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "SUPER_FLEX", "BN"],
+    "draft_id": "555555555555555555",
+    "avatar": null
+  }
+]

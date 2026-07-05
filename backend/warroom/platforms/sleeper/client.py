@@ -21,6 +21,7 @@ class SleeperClient:
             timeout=timeout,
             transport=httpx.AsyncHTTPTransport(retries=2),
         )
+        self._sleep = asyncio.sleep  # injectable so retry tests don't wall-clock wait
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -46,7 +47,7 @@ class SleeperClient:
                 if not retryable or attempt >= retries:
                     raise
                 attempt += 1
-                await asyncio.sleep(delay + random.uniform(0, delay / 4))
+                await self._sleep(delay + random.uniform(0, delay / 4))
                 delay *= 2
 
     async def get_user(self, username_or_id: str) -> dict:

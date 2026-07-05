@@ -1,0 +1,29 @@
+{
+  "draft_id": "333333333333333333",
+  "league_id": "222222222222222222",
+  "type": "snake",
+  "status": "drafting",
+  "sport": "nfl",
+  "season": "2026",
+  "season_type": "regular",
+  "settings": {
+    "teams": 12,
+    "rounds": 15,
+    "pick_timer": 90,
+    "reversal_round": 0,
+    "slots_qb": 1,
+    "slots_rb": 2,
+    "slots_wr": 2,
+    "slots_te": 1,
+    "slots_flex": 1,
+    "slots_k": 1,
+    "slots_def": 1,
+    "slots_bn": 6
+  },
+  "draft_order": {"111111111111111111": 4},
+  "slot_to_roster_id": {
+    "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6,
+    "7": 7, "8": 8, "9": 9, "10": 10, "11": 11, "12": 12
+  },
+  "metadata": {"scoring_type": "half_ppr"}
+}
