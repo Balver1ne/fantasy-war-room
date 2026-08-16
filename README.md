@@ -43,22 +43,20 @@ Tests: `pytest`
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Repo + Sleeper plumbing (live pick polling, SSE, resume-safe state) | built; awaiting live mock-draft acceptance |
+| 1 | Repo + Sleeper plumbing (live pick polling, SSE, resume-safe state) | complete — tag `2026.1` |
 | 2 | Ingestion + player matching | — |
 | 3 | Recommendation engine | — |
 | 4 | Draft Room UI | — |
 | 5 | Multi-league + polish | — |
 
-### Phase 1 acceptance run (do this once against a live mock)
+### Phase 1 acceptance run — PASSED 2026-07-05
 
-1. `pytest` → all green.
-2. `python -m warroom`; on sleeper.com create a **mock draft** (12-team, 15 rounds;
-   do one run with 3rd-round reversal ON to confirm the order math empirically).
-3. Start a session with your slot (step 2 above) and open `/debug`.
-4. Verify every pick appears within 2–3 s of being made in Sleeper.
-5. Mid-draft: Ctrl-C the server, restart, re-POST the session → RESYNC shows the correct
-   cumulative pick count within one poll.
-6. Mid-draft: kill Wi-Fi ~20 s → STALE banner + backoff; restore → RECOVERED + resync.
+Verified live against a Sleeper mock draft: picks streamed within 2–3 s, snake round-turns
+matched Sleeper exactly, all players resolved (no unmatched), on-the-clock/alert logic and
+clean draft-complete detection all fired correctly, and resume-safety held (server restart
++ draft pause/restart both re-synced without loss). Re-run steps if regressions are
+suspected: `pytest`; `.venv\Scripts\python.exe -m warroom`; start a mock, open `/debug`,
+watch picks; Ctrl-C + restart mid-draft to confirm RESYNC.
 
 ## Draft day checklist
 
