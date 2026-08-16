@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>War Room — SSE debug</title>
+<style>
+  body { background:#0b0e11; color:#c9d1d9; font:13px/1.5 ui-monospace,Consolas,monospace; margin:0; padding:16px; }
+  h1 { font-size:15px; color:#e6edf3; font-weight:600; }
+  input { background:#161b22; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:6px 8px; width:260px; }
+  button { background:#1f6feb; color:#fff; border:0; border-radius:6px; padding:6px 12px; margin-left:6px; cursor:pointer; }
+  button.secondary { background:#21262d; border:1px solid #30363d; }
+  #log { margin-top:12px; border:1px solid #21262d; border-radius:8px; padding:10px; height:70vh; overflow-y:auto; }
+  .pick { color:#7ee787; } .on_clock { color:#79c0ff; } .stale { color:#f85149; font-weight:700; }
+  .recovered { color:#d29922; } .resync { color:#a5a5a5; } .status { color:#d2a8ff; } .err { color:#f85149; }
+  .t { color:#484f58; margin-right:8px; }
+</style>
+</head>
+<body>
+<h1>War Room — draft event stream (Phase 1 debug console)</h1>
+<div>
+  <input id="draftId" placeholder="Sleeper draft id">
+  <input id="mySlot" placeholder="my slot (optional)" style="width:120px">
+  <button onclick="startSession()">Start session</button>
+  <button class="secondary" onclick="connect()">Connect stream only</button>
+</div>
+<div id="log"></div>
+<script>
+let es = null;
+const log = (cls, text) => {
+  const el = document.getElementById("log");
+  const line = document.createElement("div");
+  const ts = new Date().toLocaleTimeString();
+  line.innerHTML = `<span class="t">${ts}</span><span class="${cls}">${text}</span>`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+};
+async function startSession() {
+  const id = document.getElementById("draftId").value.trim();
+  if (!id) return log("err", "enter a draft id");
+  const slot = document.getElementById("mySlot").value.trim();
+  const body = slot ? { my_slot: parseInt(slot, 10) } : {};
+  const resp = await fetch(`/api/drafts/${encodeURIComponent(id)}/session`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+  const data = await resp.json();
+  if (!resp.ok) return log("err", `session start failed: ${JSON.stringify(data)}`);
+  log("resync", `session started: ${data.pick_count} picks, status=${data.status}`);
+  connect(data.draft_id || id);
+}
+function connect(id) {
+  id = id || document.getElementById("draftId").value.trim();
+  if (!id) return log("err", "enter a draft id");
+  if (es) es.close();
+  es = new EventSource(`/api/drafts/${encodeURIComponent(id)}/events`);
+  es.onopen = () => log("resync", `connected to draft ${id}`);
+  es.onerror = () => log("err", "stream error (reconnecting…)");
+  for (const type of ["resync", "pick", "on_clock", "stale", "recovered", "status"]) {
+    es.addEventListener(type, (e) => {
+      const d = JSON.parse(e.data);
+      if (type === "pick")
+        log("pick", `PICK ${String(d.pick_no).padStart(3)} ${d.label}  ${d.player.name} (${d.player.position ?? "?"}, ${d.player.team ?? "FA"}) → slot ${d.draft_slot}`);
+      else if (type === "on_clock")
+        log("on_clock", `on the clock: pick ${d.next_pick_no} (${d.label}), slot ${d.slot}` +
+          (d.picks_until_me != null ? ` — you pick in ${d.picks_until_me}` : "") + (d.alert ? "  ⚠" : ""));
+      else if (type === "resync")
+        log("resync", `RESYNC: ${d.pick_count ?? "?"} picks, status=${d.status}, stale=${d.stale ?? "?"}`);
+      else
+        log(type, `${type.toUpperCase()}: ${JSON.stringify(d)}`);
+    });
+  }
+}
+</script>
+</body>
+</html>

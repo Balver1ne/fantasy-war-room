@@ -42,6 +42,15 @@ deliverable is unproven. Matching quality is the app.
   passes, then tag (`2026.1` … `2026.5`).
 
 ## Current state
-- Phase 1 in progress on branch `phase-1-sleeper-plumbing`: repo scaffold + Sleeper
-  plumbing (player universe sync, league/draft fetch, live pick polling + SSE, resume-safe
-  state). Deliverable: picks visible in terminal/SSE within 2–3 s of a Sleeper mock draft.
+- Phase 1 COMPLETE, merged to `main`, tagged `2026.1`. Sleeper adapter behind
+  PlatformAdapter, player universe sync (~12k players), draft session poll loop with
+  diff/resync/backoff, SSE + `/debug` console, snake/traded-pick math, 72 passing tests.
+  Live acceptance passed: picks streamed within 2–3 s, snake round-turns matched Sleeper,
+  resume-safety confirmed (server restart + draft pause/restart both followed along).
+- 3rd-round reversal: implemented and unit-tested, but the user's leagues do not use it,
+  so it is not a verification concern. Do not spend effort re-confirming it live.
+- TLS note: this machine's TLS path is intercepted (AV/proxy), so `create_app` calls
+  `truststore.inject_into_ssl()` to use the Windows cert store. Don't remove it.
+- Environment: the user runs commands in **Windows PowerShell**, not bash. Give
+  PowerShell syntax (`Invoke-RestMethod`, `.venv\Scripts\python.exe`, `curl.exe` for real
+  curl). Next up: Phase 2 — ingestion + player matching.

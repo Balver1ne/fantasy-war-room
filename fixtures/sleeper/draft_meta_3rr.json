@@ -1,0 +1,17 @@
+{
+  "draft_id": "666666666666666666",
+  "league_id": "222222222222222222",
+  "type": "snake",
+  "status": "pre_draft",
+  "sport": "nfl",
+  "season": "2026",
+  "settings": {
+    "teams": 12,
+    "rounds": 15,
+    "pick_timer": 60,
+    "reversal_round": 3
+  },
+  "draft_order": null,
+  "slot_to_roster_id": null,
+  "metadata": {"scoring_type": "half_ppr"}
+}

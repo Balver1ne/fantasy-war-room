@@ -1,0 +1,13 @@
+{
+  "league_id": "222222222222222222",
+  "name": "Synthetic Half PPR League",
+  "season": "2026",
+  "status": "pre_draft",
+  "sport": "nfl",
+  "total_rosters": 12,
+  "settings": {"type": 0, "num_teams": 12},
+  "scoring_settings": {"rec": 0.5, "pass_td": 4.0, "rush_td": 6.0},
+  "roster_positions": ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF", "BN", "BN", "BN", "BN", "BN", "BN"],
+  "draft_id": "333333333333333333",
+  "avatar": null
+}
