@@ -6,7 +6,16 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from warroom.db.models import Draft, DraftPick, League, Meta, Player, utcnow
+from warroom.db.models import (
+    Draft,
+    DraftPick,
+    League,
+    Meta,
+    Player,
+    PlayerAlias,
+    utcnow,
+)
+from warroom.matching.engine import PlayerRef
 from warroom.names import normalize_name
 from warroom.platforms.models import DraftInfo, LeagueInfo, PickInfo, PlayerInfo
 
@@ -131,3 +140,31 @@ def get_players_by_ids(session: Session, sleeper_ids: list[str]) -> dict[str, Pl
         return {}
     stmt = select(Player).where(Player.sleeper_id.in_(sleeper_ids))
     return {p.sleeper_id: p for p in session.scalars(stmt)}
+
+
+def load_player_refs(session: Session) -> list[PlayerRef]:
+    """Snapshot the player universe as match-index inputs."""
+    return [
+        PlayerRef(
+            sleeper_id=p.sleeper_id,
+            name=p.name,
+            name_normalized=p.name_normalized,
+            position=p.position,
+            team=p.team,
+        )
+        for p in session.scalars(select(Player))
+    ]
+
+
+def load_aliases(session: Session) -> dict[str, str]:
+    """alias_normalized -> sleeper_id (latest wins)."""
+    aliases: dict[str, str] = {}
+    for a in session.scalars(select(PlayerAlias).order_by(PlayerAlias.created_at)):
+        aliases[a.alias_normalized] = a.sleeper_id
+    return aliases
+
+
+def add_alias(session: Session, alias_normalized: str, sleeper_id: str, source: str | None) -> None:
+    session.add(
+        PlayerAlias(alias_normalized=alias_normalized, sleeper_id=sleeper_id, source=source)
+    )

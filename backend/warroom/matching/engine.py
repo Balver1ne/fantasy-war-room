@@ -96,7 +96,9 @@ class MatchIndex:
         if pos:
             hits = self._by_name_pos.get((norm, pos), [])
             if len(hits) == 1:
-                return MatchResult(hits[0].sleeper_id, "exact_pos", 100.0, self._candidates(hits, 100.0))
+                return MatchResult(
+                    hits[0].sleeper_id, "exact_pos", 100.0, self._candidates(hits, 100.0)
+                )
             if len(hits) > 1:
                 # narrow the collision by team if we have one
                 if tm:
@@ -112,7 +114,9 @@ class MatchIndex:
         if tm:
             hits = self._by_name_team.get((norm, tm), [])
             if len(hits) == 1:
-                return MatchResult(hits[0].sleeper_id, "exact_team", 100.0, self._candidates(hits, 100.0))
+                return MatchResult(
+                    hits[0].sleeper_id, "exact_team", 100.0, self._candidates(hits, 100.0)
+                )
             if len(hits) > 1:
                 return MatchResult(None, "ambiguous", 100.0, self._candidates(hits, 100.0))
 
