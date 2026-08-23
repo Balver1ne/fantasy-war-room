@@ -53,4 +53,13 @@ deliverable is unproven. Matching quality is the app.
   `truststore.inject_into_ssl()` to use the Windows cert store. Don't remove it.
 - Environment: the user runs commands in **Windows PowerShell**, not bash. Give
   PowerShell syntax (`Invoke-RestMethod`, `.venv\Scripts\python.exe`, `curl.exe` for real
-  curl). Next up: Phase 2 — ingestion + player matching.
+  curl).
+- Phase 2 (ingestion + matching) COMPLETE — merged to `main`, tagged `2026.2` (UAT
+  passed). Matching engine (alias/exact/fuzzy, collisions to queue), CSV + PDF importers,
+  column-mapping wizard, versioned ranking sets (deletable), user-defined flags,
+  `/import` console. Verified vs the real 12k universe: FantasyPros 99.2%, TFH rankings
+  100%, flags (sleeper/breakout/bust/value_pick) in `player_flags`. Next: Phase 3 —
+  recommendation engine (DESIGN.md §5). Real research files live OUTSIDE the repo at
+  `C:\Users\Paul\Documents\fantasy_football_research` (subscriber content, never committed;
+  don't copy into the repo). PDF parsers are text-based (pdfplumber); handcuffs layout
+  uses the paste fallback by design.

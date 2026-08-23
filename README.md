@@ -44,8 +44,8 @@ Tests: `pytest`
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Repo + Sleeper plumbing (live pick polling, SSE, resume-safe state) | complete — tag `2026.1` |
-| 2 | Ingestion + player matching | — |
-| 3 | Recommendation engine | — |
+| 2 | Ingestion + player matching (CSV/PDF import, matching, flags) | complete — tag `2026.2` |
+| 3 | Recommendation engine | in progress |
 | 4 | Draft Room UI | — |
 | 5 | Multi-league + polish | — |
 
@@ -57,6 +57,15 @@ clean draft-complete detection all fired correctly, and resume-safety held (serv
 + draft pause/restart both re-synced without loss). Re-run steps if regressions are
 suspected: `pytest`; `.venv\Scripts\python.exe -m warroom`; start a mock, open `/debug`,
 watch picks; Ctrl-C + restart mid-draft to confirm RESYNC.
+
+## Importing rankings & flags (Phase 2)
+
+Start the server, then open `http://127.0.0.1:8734/import`. Tag the source and scoring
+format, drop a CSV or Headliners PDF, confirm the column mapping (PDFs show the raw
+extracted text for the mandatory preview), run matching, resolve any unmatched players
+against the Sleeper universe, and commit an immutable ranking set. Re-importing a source
+supersedes its previous version. Stubborn PDF layouts (e.g. RB handcuffs) use the paste
+fallback on the same screen.
 
 ## Draft day checklist
 

@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
 import warroom
-from warroom.api import routes_draft, routes_setup, routes_stream
+from warroom.api import routes_draft, routes_import, routes_setup, routes_stream
 from warroom.config import Settings
 from warroom.db.engine import init_db, make_engine, make_session_factory
 from warroom.events.broker import EventBroker
@@ -78,6 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(routes_setup.router)
     app.include_router(routes_draft.router)
     app.include_router(routes_stream.router)
+    app.include_router(routes_import.router)
 
     @app.get("/api/health")
     def health() -> dict:
@@ -94,5 +95,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/debug", include_in_schema=False)
     def debug_console() -> FileResponse:
         return FileResponse(STATIC_DIR / "debug.html")
+
+    @app.get("/import", include_in_schema=False)
+    def import_console() -> FileResponse:
+        return FileResponse(STATIC_DIR / "import.html")
 
     return app

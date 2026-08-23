@@ -12,6 +12,9 @@ dependencies = [
     "pydantic-settings",
     "sse-starlette",
     "truststore",
+    "rapidfuzz",
+    "pdfplumber",
+    "python-multipart",
 ]
 
 [project.optional-dependencies]

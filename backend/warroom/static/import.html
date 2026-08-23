@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>War Room — Import</title>
+<style>
+  :root { --bg:#0b0e11; --panel:#0f141a; --border:#21262d; --border2:#30363d;
+          --fg:#c9d1d9; --fg2:#8b949e; --accent:#1f6feb; --green:#7ee787; --red:#f85149; --amber:#d29922; }
+  * { box-sizing:border-box; }
+  body { background:var(--bg); color:var(--fg); font:13px/1.55 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif; margin:0; padding:20px; }
+  h1 { font-size:16px; color:#e6edf3; font-weight:600; margin:0 0 4px; }
+  h2 { font-size:13px; color:#e6edf3; font-weight:600; margin:18px 0 8px; text-transform:uppercase; letter-spacing:.04em; }
+  .sub { color:var(--fg2); margin-bottom:16px; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+  label { display:block; color:var(--fg2); font-size:11px; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+  input, select, textarea { background:#161b22; color:#e6edf3; border:1px solid var(--border2); border-radius:6px; padding:6px 8px; font:inherit; }
+  input, select { height:32px; } textarea { width:100%; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+  .row > div { display:flex; flex-direction:column; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:7px 14px; font:inherit; cursor:pointer; }
+  button.ghost { background:#21262d; border:1px solid var(--border2); color:var(--fg); }
+  button.tiny { padding:3px 8px; font-size:12px; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  table { border-collapse:collapse; width:100%; font-size:12px; }
+  th, td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { color:var(--fg2); font-weight:500; }
+  .tag { display:inline-block; padding:1px 7px; border-radius:20px; font-size:11px; border:1px solid var(--border2); color:var(--fg2); }
+  .ok { color:var(--green); } .bad { color:var(--red); } .warn { color:var(--amber); }
+  .scroll { max-height:280px; overflow:auto; border:1px solid var(--border); border-radius:8px; }
+  pre { white-space:pre-wrap; color:var(--fg2); font-size:11px; max-height:180px; overflow:auto; margin:0; }
+  .cand { margin:2px 4px 2px 0; }
+  .hidden { display:none; }
+  .muted { color:var(--fg2); }
+  a { color:#79c0ff; }
+</style>
+</head>
+<body>
+<h1>War Room — Import rankings & flags</h1>
+<div class="sub">Upload a CSV or Headliners PDF (or paste text), map the columns, resolve any
+  unmatched players, then commit an immutable ranking set. <a href="/debug">Draft debug →</a></div>
+
+<div class="panel">
+  <h2 style="margin-top:0">1 · New import</h2>
+  <div class="row">
+    <div><label>Source</label><input id="source" placeholder="FantasyPros" style="width:160px"></div>
+    <div><label>Scoring</label>
+      <select id="scoring"><option value="">— tag —</option>
+        <option value="standard">Standard</option>
+        <option value="half_ppr" selected>Half PPR</option>
+        <option value="ppr">Full PPR</option></select></div>
+    <div><label>League type</label>
+      <select id="ltype"><option value="redraft" selected>Redraft</option>
+        <option value="dynasty">Dynasty</option></select></div>
+    <div><label>File (.csv / .pdf)</label><input type="file" id="file" accept=".csv,.pdf"></div>
+    <div><button onclick="upload()">Upload</button></div>
+  </div>
+  <details style="margin-top:10px">
+    <summary class="muted" style="cursor:pointer">Paste fallback (for stubborn PDFs)</summary>
+    <textarea id="paste" rows="5" placeholder="Paste delimited text (comma / tab)…" style="margin-top:8px"></textarea>
+    <button class="ghost" onclick="pasteImport()">Import pasted text</button>
+  </details>
+  <div id="err" class="bad" style="margin-top:8px"></div>
+</div>
+
+<div id="job" class="hidden"></div>
+
+<div class="panel">
+  <h2 style="margin-top:0">Committed ranking sets</h2>
+  <div id="sets" class="muted">none yet</div>
+</div>
+
+<script>
+let JOB = null;
+const $ = (id) => document.getElementById(id);
+const err = (m) => { $("err").textContent = m || ""; };
+const esc = (s) => (s ?? "").toString().replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const FIELDS = ["ignore","name","team","position","rank","tier","position_rank","projection","adp","bye","notes"];
+
+async function api(method, url, body, isForm) {
+  const opt = { method, headers: {} };
+  if (isForm) opt.body = body;
+  else if (body !== undefined) { opt.headers["content-type"] = "application/json"; opt.body = JSON.stringify(body); }
+  const r = await fetch(url, opt);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || r.statusText);
+  return data;
+}
+
+async function upload() {
+  err("");
+  const f = $("file").files[0];
+  if (!f) return err("Choose a file first.");
+  const fd = new FormData();
+  fd.append("file", f); fd.append("source", $("source").value || f.name);
+  fd.append("scoring_format", $("scoring").value); fd.append("league_type", $("ltype").value);
+  try { JOB = await api("POST", "/api/imports/upload", fd, true); render(); }
+  catch (e) { err(e.message); }
+}
+async function pasteImport() {
+  err("");
+  try {
+    JOB = await api("POST", "/api/imports/paste", {
+      text: $("paste").value, source: $("source").value || "paste",
+      scoring_format: $("scoring").value || null, league_type: $("ltype").value });
+    render();
+  } catch (e) { err(e.message); }
+}
+
+function flagName(h) { return h.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,""); }
+function optionsFor(h, cur) {
+  const fn = flagName(h);
+  const opts = [...FIELDS, `flag:${fn}:bool`, `flag:${fn}:numeric`];
+  if (cur && !opts.includes(cur)) opts.push(cur);
+  return opts.map(o => `<option value="${o}" ${o===cur?"selected":""}>${o}</option>`).join("");
+}
+
+function mappingTable() {
+  const heads = JOB.headers || [];
+  const rows = heads.map(h => `<tr><td><b>${esc(h)}</b></td>
+     <td><select data-h="${esc(h)}">${optionsFor(h, JOB.mappings[h] || "ignore")}</select></td></tr>`).join("");
+  return `<table><tr><th>Column</th><th>Maps to</th></tr>${rows}</table>`;
+}
+function previewTable() {
+  const heads = JOB.headers || [];
+  const head = heads.map(h => `<th>${esc(h)}</th>`).join("");
+  const body = (JOB.preview || []).slice(0, 12).map(r =>
+     `<tr>${heads.map(h => `<td>${esc(r[h])}</td>`).join("")}</tr>`).join("");
+  return `<div class="scroll"><table><tr>${head}</tr>${body}</table></div>`;
+}
+
+function unmatchedList() {
+  const u = JOB.unmatched || [];
+  if (!u.length) return `<div class="ok">All rows resolved ✓</div>`;
+  return u.map(row => {
+    const cands = (row.candidates || []).map(c =>
+      `<button class="ghost tiny cand" onclick="resolve(${row.row_index}, '${c.sleeper_id}')">
+         ${esc(c.name)} <span class="muted">${esc(c.position)||""} ${esc(c.team)||""} ·${Math.round(c.score)}</span></button>`).join("");
+    return `<div class="panel" style="padding:10px 12px">
+      <b>${esc(row.name)}</b> <span class="muted">${esc(row.position)||""} ${esc(row.team)||""}</span>
+      <span class="tag">${esc(row.method||row.status)}</span>
+      <div style="margin:6px 0">${cands || '<span class="muted">no candidates</span>'}</div>
+      <input placeholder="search player…" style="width:220px" oninput="search(this, ${row.row_index})">
+      <button class="ghost tiny" onclick="skip(${row.row_index})">skip row</button>
+      <div class="results" style="margin-top:6px"></div>
+    </div>`;
+  }).join("");
+}
+
+function render() {
+  err("");
+  const j = JOB;
+  const notes = (j.notes||[]).length ? `<div class="warn">${j.notes.map(esc).join("<br>")}</div>` : "";
+  const raw = j.raw_text ? `<details><summary class="muted" style="cursor:pointer">Raw extracted text (preview)</summary><pre>${esc(j.raw_text.slice(0,3000))}</pre></details>` : "";
+  const matchLine = j.status !== "mapping"
+     ? `<div style="margin:8px 0">Matched <b class="ok">${j.matched}</b> · skipped ${j.skipped} · <b class="${j.unresolved?'bad':'ok'}">${j.unresolved}</b> unresolved of ${j.row_count}</div>` : "";
+  const canCommit = j.status !== "mapping" && j.unresolved === 0 && j.status !== "committed";
+  const committed = j.status === "committed";
+
+  $("job").className = "";
+  $("job").innerHTML = `
+    <div class="panel">
+      <h2 style="margin-top:0">2 · ${esc(j.source)} <span class="tag">${esc(j.file_kind)}</span>
+        ${j.layout?`<span class="tag">${esc(j.layout)}</span>`:""}
+        ${j.scoring_format?`<span class="tag">${esc(j.scoring_format)}</span>`:'<span class="tag bad">no scoring tag</span>'}</h2>
+      <div class="muted">${j.row_count} rows${j.source_filename?` · ${esc(j.source_filename)}`:""} · status: ${esc(j.status)}</div>
+      ${notes} ${raw}
+      <div class="row" style="margin-top:10px; align-items:center">
+        <div><label>Scoring (required to commit)</label>
+          <select id="scoring2">${["","standard","half_ppr","ppr"].map(v=>`<option value="${v}" ${v===(j.scoring_format||"")?"selected":""}>${v||"— tag —"}</option>`).join("")}</select></div>
+      </div>
+      <h2>Column mapping</h2>
+      ${mappingTable()}
+      <div style="margin-top:8px">
+        <button class="ghost" onclick="saveMapping()">Save mapping</button>
+        <button onclick="runMatch()" ${committed?"disabled":""}>Run matching →</button>
+      </div>
+      <h2>Preview</h2>
+      ${previewTable()}
+      ${matchLine}
+      ${j.status!=="mapping" && !committed ? `<h2>Resolve unmatched</h2>${unmatchedList()}` : ""}
+      ${committed ? `<div class="ok">Committed as ranking set #${j.ranking_set_id} ✓</div>` : `
+        <h2>Commit</h2>
+        <div class="row" style="align-items:center">
+          <div><label>Label (optional)</label><input id="label" placeholder="e.g. FP Aug 16" style="width:180px"></div>
+          <div><button onclick="commit()" ${canCommit?"":"disabled"}>Commit ranking set</button></div>
+          ${!canCommit && j.status!=="mapping" ? `<span class="muted">resolve all rows and tag scoring to enable</span>`:""}
+        </div>`}
+    </div>`;
+  loadSets();
+}
+
+function collectMapping() {
+  const m = {};
+  document.querySelectorAll('#job select[data-h]').forEach(s => { m[s.dataset.h] = s.value; });
+  return m;
+}
+async function saveMapping() {
+  try {
+    JOB = await api("PUT", `/api/imports/${JOB.id}/mapping`,
+      { mappings: collectMapping(), scoring_format: $("scoring2").value || null });
+    if (JOB.problems && JOB.problems.length) err(JOB.problems.join(" "));
+    render();
+  } catch (e) { err(e.message); }
+}
+async function runMatch() {
+  try { await saveMapping(); const r = await api("POST", `/api/imports/${JOB.id}/match`); JOB = r; render(); }
+  catch (e) { err(e.message); }
+}
+async function resolve(rowIndex, sleeperId) {
+  try { JOB = await api("POST", `/api/imports/${JOB.id}/resolve`, { row_index: rowIndex, sleeper_id: sleeperId }); render(); }
+  catch (e) { err(e.message); }
+}
+async function skip(rowIndex) {
+  try { JOB = await api("POST", `/api/imports/${JOB.id}/skip`, { row_index: rowIndex }); render(); }
+  catch (e) { err(e.message); }
+}
+async function commit() {
+  try {
+    const r = await api("POST", `/api/imports/${JOB.id}/commit`, { label: ($("label")||{}).value || null });
+    JOB = await api("GET", `/api/imports/${JOB.id}`); render();
+  } catch (e) { err(e.message); }
+}
+let searchTimer;
+async function search(input, rowIndex) {
+  clearTimeout(searchTimer);
+  const q = input.value.trim();
+  const box = input.parentElement.querySelector(".results");
+  if (q.length < 2) { box.innerHTML = ""; return; }
+  searchTimer = setTimeout(async () => {
+    const hits = await api("GET", `/api/players/search?q=${encodeURIComponent(q)}`);
+    box.innerHTML = hits.map(h => `<button class="ghost tiny cand" onclick="resolve(${rowIndex}, '${h.sleeper_id}')">
+       ${esc(h.name)} <span class="muted">${esc(h.position)||""} ${esc(h.team)||""}</span></button>`).join("") || '<span class="muted">no matches</span>';
+  }, 200);
+}
+async function loadSets() {
+  try {
+    const sets = await api("GET", "/api/rankings/sets");
+    $("sets").innerHTML = sets.length ? `<table><tr><th>#</th><th>Source</th><th>Kind</th><th>Scoring</th><th>Rows</th><th>Active</th><th>When</th><th></th></tr>` +
+      sets.map(s => `<tr><td>${s.id}</td><td>${esc(s.source)}</td><td>${esc(s.kind)}</td><td>${esc(s.scoring_format)}</td><td>${s.row_count}</td><td>${s.active?'<span class="ok">yes</span>':'no'}</td><td class="muted">${esc(s.imported_at.slice(0,16).replace('T',' '))}</td><td><button class="ghost tiny" onclick="deleteSet(${s.id}, '${esc(s.source)}')">delete</button></td></tr>`).join("") + `</table>`
+      : '<span class="muted">none yet</span>';
+  } catch (e) { /* ignore */ }
+}
+async function deleteSet(id, source) {
+  if (!confirm(`Delete ranking set #${id} (${source})?\nThis removes its rankings and flags. If it's the active version, the previous one is reactivated.`)) return;
+  try {
+    const r = await api("DELETE", `/api/rankings/sets/${id}`);
+    if (r.reactivated) err(`Deleted #${id}. Reactivated previous version #${r.reactivated}.`);
+    loadSets();
+  } catch (e) { err(e.message); }
+}
+loadSets();
+</script>
+</body>
+</html>

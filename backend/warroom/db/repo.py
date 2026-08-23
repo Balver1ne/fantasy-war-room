@@ -6,7 +6,16 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from warroom.db.models import Draft, DraftPick, League, Meta, Player, utcnow
+from warroom.db.models import (
+    Draft,
+    DraftPick,
+    League,
+    Meta,
+    Player,
+    PlayerAlias,
+    utcnow,
+)
+from warroom.matching.engine import PlayerRef
 from warroom.names import normalize_name
 from warroom.platforms.models import DraftInfo, LeagueInfo, PickInfo, PlayerInfo
 
@@ -131,3 +140,57 @@ def get_players_by_ids(session: Session, sleeper_ids: list[str]) -> dict[str, Pl
         return {}
     stmt = select(Player).where(Player.sleeper_id.in_(sleeper_ids))
     return {p.sleeper_id: p for p in session.scalars(stmt)}
+
+
+def load_player_refs(session: Session) -> list[PlayerRef]:
+    """Snapshot the player universe as match-index inputs."""
+    return [
+        PlayerRef(
+            sleeper_id=p.sleeper_id,
+            name=p.name,
+            name_normalized=p.name_normalized,
+            position=p.position,
+            team=p.team,
+        )
+        for p in session.scalars(select(Player))
+    ]
+
+
+def load_aliases(session: Session) -> dict[str, str]:
+    """alias_normalized -> sleeper_id (latest wins)."""
+    aliases: dict[str, str] = {}
+    for a in session.scalars(select(PlayerAlias).order_by(PlayerAlias.created_at)):
+        aliases[a.alias_normalized] = a.sleeper_id
+    return aliases
+
+
+def add_alias(session: Session, alias_normalized: str, sleeper_id: str, source: str | None) -> None:
+    session.add(
+        PlayerAlias(alias_normalized=alias_normalized, sleeper_id=sleeper_id, source=source)
+    )
+
+
+def search_players(
+    session: Session, query: str, position: str | None = None, limit: int = 25
+) -> list[dict[str, str | None]]:
+    """Name substring search for the resolution picker. Exact/prefix hits rank first."""
+    norm = normalize_name(query)
+    if not norm:
+        return []
+    stmt = select(Player).where(Player.name_normalized.contains(norm))
+    if position:
+        stmt = stmt.where(Player.position == position)
+    hits = list(session.scalars(stmt.limit(limit * 3)))
+
+    def rank(p: Player) -> tuple[int, str]:
+        if p.name_normalized == norm:
+            return (0, p.name_normalized)
+        if p.name_normalized.startswith(norm):
+            return (1, p.name_normalized)
+        return (2, p.name_normalized)
+
+    hits.sort(key=rank)
+    return [
+        {"sleeper_id": p.sleeper_id, "name": p.name, "position": p.position, "team": p.team}
+        for p in hits[:limit]
+    ]
