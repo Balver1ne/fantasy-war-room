@@ -45,7 +45,7 @@ Tests: `pytest`
 |---|---|---|
 | 1 | Repo + Sleeper plumbing (live pick polling, SSE, resume-safe state) | complete — tag `2026.1` |
 | 2 | Ingestion + player matching (CSV/PDF import, matching, flags) | complete — tag `2026.2` |
-| 3 | Recommendation engine | in progress |
+| 3 | Recommendation engine (VBD, tiers, survival, flag tiebreaker, reasons) | built; awaiting review |
 | 4 | Draft Room UI | — |
 | 5 | Multi-league + polish | — |
 
@@ -66,6 +66,20 @@ extracted text for the mandatory preview), run matching, resolve any unmatched p
 against the Sleeper universe, and commit an immutable ranking set. Re-importing a source
 supersedes its previous version. Stubborn PDF layouts (e.g. RB handcuffs) use the paste
 fallback on the same screen.
+
+## Recommendations (Phase 3)
+
+With rankings imported and a draft session started, ask the engine for the best available
+pick:
+
+```
+GET /api/drafts/<draft_id>/recommendations?my_slot=<slot>
+```
+
+Returns the top 8 with composite score, tier, survival probability ("% chance he's back"),
+flag badges, and up to three plain-English reasons (tier cliffs, positional runs, roster
+need, tie-breaks), plus a positional-need summary — recomputed from the live pick mirror.
+The visual Draft Room that surfaces this during a draft is Phase 4.
 
 ## Draft day checklist
 
