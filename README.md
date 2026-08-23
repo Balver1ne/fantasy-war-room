@@ -44,8 +44,8 @@ Tests: `pytest`
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Repo + Sleeper plumbing (live pick polling, SSE, resume-safe state) | complete — tag `2026.1` |
-| 2 | Ingestion + player matching (CSV/PDF import, matching, flags) | built; awaiting browser UAT |
-| 3 | Recommendation engine | — |
+| 2 | Ingestion + player matching (CSV/PDF import, matching, flags) | complete — tag `2026.2` |
+| 3 | Recommendation engine | in progress |
 | 4 | Draft Room UI | — |
 | 5 | Multi-league + polish | — |
 
