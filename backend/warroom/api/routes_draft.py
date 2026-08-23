@@ -7,6 +7,10 @@ from sqlalchemy.orm import Session
 
 from warroom.api.deps import get_db, get_player_sync, get_session_manager
 from warroom.db import repo
+from warroom.db.models import Draft
+from warroom.engine import assemble
+from warroom.engine.models import Preferences
+from warroom.engine.recommend import recommend
 from warroom.platforms.base import PlatformNotFound
 from warroom.sync.draft_session import SessionManager
 from warroom.sync.player_sync import PlayerSyncService
@@ -96,6 +100,53 @@ def get_draft_picks(draft_id: str, db: Db) -> list[dict[str, Any]]:
             }
         )
     return result
+
+
+@router.get("/drafts/{draft_id}/recommendations")
+def get_recommendations(
+    draft_id: str,
+    db: Db,
+    sessions: Sessions,
+    my_slot: int | None = None,
+    scoring: str | None = None,
+) -> dict[str, Any]:
+    """Best available picks for the drafting team, from the committed ranking sets +
+    this draft's live pick state (Phase 3 engine over Phase 1/2 data)."""
+    draft = db.get(Draft, draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail=f"No draft {draft_id} (start a session first)")
+
+    session = sessions.get(draft_id)
+    if my_slot is None and session is not None:
+        my_slot = session.my_slot
+    my_roster_id = session.my_roster_id if session is not None else None
+
+    data = assemble.build_ranking_data(db, scoring or (draft.settings or {}).get("scoring_type"))
+    if not data.players:
+        raise HTTPException(
+            status_code=400,
+            detail="No active ranking sets — import rankings on /import first.",
+        )
+    league = assemble.build_league_from_draft(draft)
+    state = assemble.build_draft_state(db, draft, my_slot=my_slot, my_roster_id=my_roster_id)
+    result = recommend(state, data, Preferences(), league)
+
+    return {
+        "draft_id": draft_id,
+        "my_slot": my_slot,
+        "my_next_pick": state.my_next_pick_label,
+        "needs": result.needs,
+        "compute_ms": round(result.compute_ms, 1),
+        "recommendations": [
+            {
+                "sleeper_id": r.sleeper_id, "name": r.name, "position": r.position,
+                "team": r.team, "composite": r.composite_score, "vor": r.base_vor,
+                "tier": r.tier, "survival": r.survival_prob, "flags": r.flags,
+                "reasons": r.reasons,
+            }
+            for r in result.recommendations
+        ],
+    }
 
 
 @router.post("/players/sync")
