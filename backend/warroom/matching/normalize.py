@@ -17,6 +17,7 @@ _TEAM_ALIASES = {
     "OAK": "LV",
     "LVR": "LV",
     "ARZ": "ARI",
+    "AZ": "ARI",
     "GBP": "GB",
     "KCC": "KC",
     "NEP": "NE",
@@ -28,6 +29,19 @@ _TEAM_ALIASES = {
 
 _DEF_TOKENS = {"DEF", "DST", "D/ST", "DS", "D"}
 _POS_CANON = {"QB", "RB", "WR", "TE", "K", "PK", "DEF"}
+# Full-word positions (spaces already stripped) → canonical, e.g. Football Absurdity's
+# "Quarterback" / "Running Back" columns.
+_POS_WORDS = {
+    "QUARTERBACK": "QB",
+    "RUNNINGBACK": "RB",
+    "WIDERECEIVER": "WR",
+    "TIGHTEND": "TE",
+    "KICKER": "K",
+    "PLACEKICKER": "K",
+    "DEFENSE": "DEF",
+    "DEFENSESPECIALTEAMS": "DEF",
+    "DEFENSEST": "DEF",
+}
 
 
 def canonical_team(team: str | None) -> str | None:
@@ -46,8 +60,10 @@ def canonical_position(position: str | None) -> str | None:
     if not position:
         return None
     p = position.strip().upper()
-    p = re.sub(r"\s+", "", p)
-    if p in _DEF_TOKENS or p.startswith("D/ST") or p.startswith("DST"):
+    p = re.sub(r"[\s./]+", "", p)
+    if p in _POS_WORDS:
+        return _POS_WORDS[p]
+    if p in _DEF_TOKENS or p.startswith("DST"):
         return "DEF"
     # strip trailing digits (RB1 -> RB, WR12 -> WR)
     letters = re.sub(r"\d+$", "", p)
