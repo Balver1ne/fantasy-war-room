@@ -119,13 +119,50 @@ async def test_paste_import(api):
     assert r.json()["row_count"] == 2
 
 
-async def test_ranking_sets_listing(api):
-    client, _ = api
+async def _commit_fp(client):
     job = (await _upload_fp(client)).json()
     jid = job["id"]
     await client.post(f"/api/imports/{jid}/match")
     unmatched = (await client.get(f"/api/imports/{jid}")).json()["unmatched"]
-    await client.post(f"/api/imports/{jid}/skip", json={"row_index": unmatched[0]["row_index"]})
-    await client.post(f"/api/imports/{jid}/commit", json={})
+    for u in unmatched:
+        await client.post(f"/api/imports/{jid}/skip", json={"row_index": u["row_index"]})
+    return (await client.post(f"/api/imports/{jid}/commit", json={})).json()
+
+
+async def test_ranking_sets_listing(api):
+    client, _ = api
+    await _commit_fp(client)
     sets = (await client.get("/api/rankings/sets")).json()
     assert len(sets) == 1 and sets[0]["active"] is True
+
+
+async def test_delete_ranking_set_removes_rankings_and_flags(api):
+    client, sf = api
+    committed = await _commit_fp(client)
+    set_id = committed["ranking_set_id"]
+
+    r = await client.delete(f"/api/rankings/sets/{set_id}")
+    assert r.status_code == 200
+    assert (await client.get("/api/rankings/sets")).json() == []
+    with sf() as s:
+        from warroom.db.models import Ranking
+        assert s.query(Ranking).count() == 0
+
+
+async def test_delete_active_reactivates_previous_version(api):
+    client, _ = api
+    first = await _commit_fp(client)   # active
+    second = await _commit_fp(client)  # re-import supersedes; first goes inactive
+    sets = {s["id"]: s for s in (await client.get("/api/rankings/sets")).json()}
+    assert sets[second["ranking_set_id"]]["active"] is True
+    assert sets[first["ranking_set_id"]]["active"] is False
+
+    r = await client.delete(f"/api/rankings/sets/{second['ranking_set_id']}")
+    assert r.json()["reactivated"] == first["ranking_set_id"]
+    sets = {s["id"]: s for s in (await client.get("/api/rankings/sets")).json()}
+    assert sets[first["ranking_set_id"]]["active"] is True
+
+
+async def test_delete_missing_set_404(api):
+    client, _ = api
+    assert (await client.delete("/api/rankings/sets/999")).status_code == 404

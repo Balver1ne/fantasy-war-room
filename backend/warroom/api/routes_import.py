@@ -157,6 +157,15 @@ def player_search(db: Db, q: str, position: str | None = None) -> list[dict[str,
     return repo.search_players(db, q, position)
 
 
+@router.delete("/rankings/sets/{set_id}")
+def delete_ranking_set(set_id: int, db: Db) -> dict[str, Any]:
+    result = service.delete_ranking_set(db, set_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"No ranking set {set_id}")
+    db.commit()
+    return result
+
+
 @router.get("/rankings/sets")
 def list_ranking_sets(db: Db) -> list[dict[str, Any]]:
     sets = db.scalars(select(RankingSet).order_by(RankingSet.imported_at.desc()))

@@ -236,10 +236,18 @@ async function search(input, rowIndex) {
 async function loadSets() {
   try {
     const sets = await api("GET", "/api/rankings/sets");
-    $("sets").innerHTML = sets.length ? `<table><tr><th>#</th><th>Source</th><th>Kind</th><th>Scoring</th><th>Rows</th><th>Active</th><th>When</th></tr>` +
-      sets.map(s => `<tr><td>${s.id}</td><td>${esc(s.source)}</td><td>${esc(s.kind)}</td><td>${esc(s.scoring_format)}</td><td>${s.row_count}</td><td>${s.active?'<span class="ok">yes</span>':'no'}</td><td class="muted">${esc(s.imported_at.slice(0,16).replace('T',' '))}</td></tr>`).join("") + `</table>`
+    $("sets").innerHTML = sets.length ? `<table><tr><th>#</th><th>Source</th><th>Kind</th><th>Scoring</th><th>Rows</th><th>Active</th><th>When</th><th></th></tr>` +
+      sets.map(s => `<tr><td>${s.id}</td><td>${esc(s.source)}</td><td>${esc(s.kind)}</td><td>${esc(s.scoring_format)}</td><td>${s.row_count}</td><td>${s.active?'<span class="ok">yes</span>':'no'}</td><td class="muted">${esc(s.imported_at.slice(0,16).replace('T',' '))}</td><td><button class="ghost tiny" onclick="deleteSet(${s.id}, '${esc(s.source)}')">delete</button></td></tr>`).join("") + `</table>`
       : '<span class="muted">none yet</span>';
   } catch (e) { /* ignore */ }
+}
+async function deleteSet(id, source) {
+  if (!confirm(`Delete ranking set #${id} (${source})?\nThis removes its rankings and flags. If it's the active version, the previous one is reactivated.`)) return;
+  try {
+    const r = await api("DELETE", `/api/rankings/sets/${id}`);
+    if (r.reactivated) err(`Deleted #${id}. Reactivated previous version #${r.reactivated}.`);
+    loadSets();
+  } catch (e) { err(e.message); }
 }
 loadSets();
 </script>

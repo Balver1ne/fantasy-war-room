@@ -6,7 +6,7 @@ board. The design doc is emphatic: never silently ingest a mismatch (DESIGN.md Â
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from warroom.db import repo
@@ -360,3 +360,34 @@ def commit(session: Session, job: ImportJob, *, label: str | None = None) -> Ran
 def _is_adp(fields: dict[str, str]) -> bool:
     """An import whose primary numeric column is ADP is stored as an adp set."""
     return "adp" in fields and "rank" not in fields
+
+
+def delete_ranking_set(session: Session, set_id: int) -> dict[str, Any] | None:
+    """Remove a ranking set and everything tied to it (rankings + flags). If it was the
+    active version of its source, the most recent remaining version is reactivated so a
+    source is never left with only inactive sets. Returns None if the set doesn't exist."""
+    rset = session.get(RankingSet, set_id)
+    if rset is None:
+        return None
+    source, scoring, kind, was_active = rset.source, rset.scoring_format, rset.kind, rset.active
+    session.execute(delete(Ranking).where(Ranking.ranking_set_id == set_id))
+    session.execute(delete(PlayerFlag).where(PlayerFlag.ranking_set_id == set_id))
+    session.execute(
+        update(ImportJob).where(ImportJob.ranking_set_id == set_id).values(ranking_set_id=None)
+    )
+    session.delete(rset)
+    session.flush()
+
+    reactivated: int | None = None
+    if was_active:
+        replacement = session.scalars(
+            select(RankingSet)
+            .where(RankingSet.source == source, RankingSet.scoring_format == scoring,
+                   RankingSet.kind == kind)
+            .order_by(RankingSet.imported_at.desc())
+        ).first()
+        if replacement is not None:
+            replacement.active = True
+            reactivated = replacement.id
+        session.flush()
+    return {"deleted": set_id, "reactivated": reactivated}
