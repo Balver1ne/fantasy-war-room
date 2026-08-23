@@ -168,3 +168,29 @@ def add_alias(session: Session, alias_normalized: str, sleeper_id: str, source: 
     session.add(
         PlayerAlias(alias_normalized=alias_normalized, sleeper_id=sleeper_id, source=source)
     )
+
+
+def search_players(
+    session: Session, query: str, position: str | None = None, limit: int = 25
+) -> list[dict[str, str | None]]:
+    """Name substring search for the resolution picker. Exact/prefix hits rank first."""
+    norm = normalize_name(query)
+    if not norm:
+        return []
+    stmt = select(Player).where(Player.name_normalized.contains(norm))
+    if position:
+        stmt = stmt.where(Player.position == position)
+    hits = list(session.scalars(stmt.limit(limit * 3)))
+
+    def rank(p: Player) -> tuple[int, str]:
+        if p.name_normalized == norm:
+            return (0, p.name_normalized)
+        if p.name_normalized.startswith(norm):
+            return (1, p.name_normalized)
+        return (2, p.name_normalized)
+
+    hits.sort(key=rank)
+    return [
+        {"sleeper_id": p.sleeper_id, "name": p.name, "position": p.position, "team": p.team}
+        for p in hits[:limit]
+    ]

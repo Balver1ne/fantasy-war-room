@@ -17,6 +17,7 @@ from warroom.db.models import (
     Ranking,
     RankingSet,
 )
+from warroom.ingest import csv_parse, pdf_extract
 from warroom.ingest import mapping as mapping_mod
 from warroom.ingest.values import to_bool, to_float, to_int
 from warroom.matching.engine import MatchIndex
@@ -46,6 +47,10 @@ def create_job(
     league_type: str = "redraft",
     file_kind: str = "csv",
     source_filename: str | None = None,
+    initial_mapping: dict[str, str] | None = None,
+    raw_text: str = "",
+    layout: str | None = None,
+    notes: list[str] | None = None,
 ) -> ImportJob:
     job = ImportJob(
         source=source,
@@ -54,14 +59,94 @@ def create_job(
         league_type=league_type,
         source_filename=source_filename,
         status="mapping",
-        columns={"headers": headers},
-        mappings=mapping_mod.auto_map(headers),
+        columns={
+            "headers": headers,
+            "raw_text": raw_text[:8000],
+            "layout": layout,
+            "notes": notes or [],
+        },
+        mappings=initial_mapping or mapping_mod.auto_map(headers),
         raw_rows={"rows": rows},
         matches={},
     )
     session.add(job)
     session.flush()
     return job
+
+
+def build_job_from_upload(
+    session: Session,
+    *,
+    filename: str,
+    data: bytes,
+    source: str,
+    scoring_format: str | None,
+    league_type: str = "redraft",
+) -> ImportJob:
+    """Dispatch on file type: PDFs go through the text extractor (carrying their
+    suggested mapping + raw text for the mandatory preview); CSVs are parsed directly."""
+    if filename.lower().endswith(".pdf"):
+        ex = pdf_extract.extract(data)
+        return create_job(
+            session, source=source, headers=ex.headers, rows=ex.rows,
+            scoring_format=scoring_format, league_type=league_type, file_kind="pdf",
+            source_filename=filename, initial_mapping=ex.suggested_mapping,
+            raw_text=ex.raw_text, layout=ex.layout, notes=ex.notes,
+        )
+    headers, rows = csv_parse.parse_csv(csv_parse.decode_bytes(data))
+    return create_job(
+        session, source=source, headers=headers, rows=rows,
+        scoring_format=scoring_format, league_type=league_type, file_kind="csv",
+        source_filename=filename,
+    )
+
+
+def build_job_from_paste(
+    session: Session,
+    *,
+    text: str,
+    source: str,
+    scoring_format: str | None,
+    league_type: str = "redraft",
+) -> ImportJob:
+    """Paste fallback for PDFs that parse badly (DESIGN.md §4): treat pasted content as
+    delimited text through the CSV parser."""
+    headers, rows = csv_parse.parse_csv(text)
+    return create_job(
+        session, source=source, headers=headers, rows=rows,
+        scoring_format=scoring_format, league_type=league_type, file_kind="paste",
+        source_filename=None,
+    )
+
+
+def preview_rows(job: ImportJob, limit: int = 25) -> list[dict[str, str]]:
+    return job.raw_rows.get("rows", [])[:limit]
+
+
+def job_summary(job: ImportJob) -> dict[str, Any]:
+    matches = job.matches or {}
+    matched = sum(1 for e in matches.values() if e.get("status") == "matched")
+    skipped = sum(1 for e in matches.values() if e.get("status") == "skipped")
+    cols = job.columns or {}
+    return {
+        "id": job.id,
+        "source": job.source,
+        "file_kind": job.file_kind,
+        "scoring_format": job.scoring_format,
+        "league_type": job.league_type,
+        "source_filename": job.source_filename,
+        "status": job.status,
+        "headers": cols.get("headers", []),
+        "mappings": job.mappings,
+        "layout": cols.get("layout"),
+        "notes": cols.get("notes", []),
+        "raw_text": cols.get("raw_text", ""),
+        "row_count": len(job.raw_rows.get("rows", [])),
+        "matched": matched,
+        "skipped": skipped,
+        "unresolved": len(unresolved_rows(job)),
+        "ranking_set_id": job.ranking_set_id,
+    }
 
 
 def set_mapping(session: Session, job: ImportJob, mappings: dict[str, str]) -> list[str]:
