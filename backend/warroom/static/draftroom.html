@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>War Room — Draft Room</title>
+<style>
+  :root {
+    --bg:#0a0d10; --panel:#0f141a; --panel2:#131922; --border:#1e2630; --border2:#2b3542;
+    --fg:#d7dee6; --fg2:#8b97a6; --fg3:#5c6675; --accent:#3b82f6; --accent2:#1f6feb;
+    --green:#5ec26a; --red:#f0533f; --amber:#e0a63b; --purple:#a371f7;
+    --qb:#e0a63b; --rb:#5ec26a; --wr:#3b82f6; --te:#f0533f; --k:#8b97a6; --def:#a371f7;
+  }
+  * { box-sizing:border-box; }
+  html,body { height:100%; }
+  body { background:var(--bg); color:var(--fg); margin:0;
+         font:13px/1.5 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .mono { font-family:ui-monospace,Consolas,monospace; }
+  header { display:flex; align-items:center; gap:12px; padding:8px 14px; border-bottom:1px solid var(--border); background:var(--panel); }
+  header h1 { font-size:14px; font-weight:600; color:#eef2f6; margin:0; letter-spacing:.02em; }
+  header .spacer { flex:1; }
+  input, select { background:#0c1116; color:#eef2f6; border:1px solid var(--border2); border-radius:6px; padding:5px 8px; font:inherit; height:30px; }
+  button { background:var(--accent2); color:#fff; border:0; border-radius:6px; padding:6px 12px; font:inherit; cursor:pointer; }
+  button.ghost { background:#1b2230; border:1px solid var(--border2); color:var(--fg); }
+  button.tiny { padding:2px 7px; font-size:11px; }
+  a { color:#79c0ff; text-decoration:none; }
+
+  .conn { font-size:11px; color:var(--fg2); }
+  .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--fg3); margin-right:4px; }
+  .dot.live { background:var(--green); } .dot.stale { background:var(--red); }
+  .stalebar { display:none; background:#3a1512; color:#ffb4a8; border:1px solid #7a2318; padding:6px 14px; font-weight:600; }
+  .stalebar.on { display:block; }
+
+  .ticker { display:flex; align-items:center; gap:6px; padding:6px 14px; border-bottom:1px solid var(--border); background:var(--panel2); overflow-x:auto; white-space:nowrap; }
+  .ticker .lbl { color:var(--fg3); font-size:11px; text-transform:uppercase; letter-spacing:.05em; margin-right:4px; }
+  .chip { display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:20px; background:#0c1116; border:1px solid var(--border2); font-size:11px; }
+  .pos { font-weight:700; font-size:10px; padding:0 4px; border-radius:3px; color:#0a0d10; }
+  .pos.QB{background:var(--qb)} .pos.RB{background:var(--rb)} .pos.WR{background:var(--wr)}
+  .pos.TE{background:var(--te)} .pos.K{background:var(--k)} .pos.DEF{background:var(--def)}
+
+  .clockbar { margin-left:auto; display:flex; align-items:center; gap:10px; padding-left:12px; }
+  .clock { font-weight:700; color:#eef2f6; } .clock.alert { color:var(--amber); }
+  .clock.now { color:var(--green); }
+
+  main { display:grid; grid-template-columns:340px 1fr 300px; gap:10px; padding:10px; height:calc(100vh - 96px); }
+  .col { background:var(--panel); border:1px solid var(--border); border-radius:10px; display:flex; flex-direction:column; overflow:hidden; }
+  .col h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--fg2); margin:0; padding:10px 12px 8px; border-bottom:1px solid var(--border); }
+  .scroll { overflow-y:auto; padding:6px; flex:1; }
+
+  .filters { display:flex; gap:4px; padding:8px 10px; flex-wrap:wrap; border-bottom:1px solid var(--border); }
+  .filters button { background:#0c1116; border:1px solid var(--border2); color:var(--fg2); padding:3px 9px; border-radius:20px; font-size:11px; }
+  .filters button.on { background:var(--accent2); color:#fff; border-color:var(--accent2); }
+
+  .tierband { font-size:10px; color:var(--fg3); text-transform:uppercase; letter-spacing:.08em; margin:8px 6px 3px; border-top:1px dashed var(--border2); padding-top:5px; }
+  .prow { display:flex; align-items:center; gap:8px; padding:5px 6px; border-radius:6px; }
+  .prow:hover { background:var(--panel2); }
+  .prow .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .prow .sv { font-size:11px; color:var(--fg2); width:38px; text-align:right; }
+  .prow .team { color:var(--fg3); font-size:11px; }
+  .flag { font-size:9px; padding:1px 4px; border-radius:3px; background:#20272f; color:var(--purple); border:1px solid var(--border2); }
+  .star { cursor:pointer; color:var(--fg3); } .star.on { color:var(--amber); }
+
+  .cards { padding:10px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; }
+  .card { background:linear-gradient(180deg,var(--panel2),var(--panel)); border:1px solid var(--border2); border-radius:12px; padding:14px 16px; }
+  .card.top { border-color:#2f4a6d; box-shadow:inset 0 0 0 1px rgba(59,130,246,.15); }
+  .card .rank { font-size:11px; color:var(--fg3); }
+  .card .name { font-size:20px; font-weight:700; color:#f2f6fa; margin:2px 0; }
+  .card .meta { color:var(--fg2); font-size:12px; margin-bottom:8px; }
+  .card .reasons { list-style:none; padding:0; margin:8px 0 0; }
+  .card .reasons li { padding:3px 0 3px 16px; position:relative; color:var(--fg); }
+  .card .reasons li::before { content:"▸"; position:absolute; left:0; color:var(--accent); }
+  .card .stat { display:inline-block; margin-right:14px; }
+  .card .stat b { color:#eef2f6; }
+  .onclock { background:#10251a; border:1px solid #1f5133; color:#8ff0b0; padding:8px 14px; border-radius:10px; font-weight:600; margin:10px; text-align:center; }
+
+  .slots { padding:6px 8px; }
+  .slot { display:flex; align-items:center; gap:8px; padding:4px 6px; border-radius:6px; }
+  .slot .tag { width:44px; font-size:10px; font-weight:700; color:var(--fg2); }
+  .slot.empty { opacity:.85; } .slot.empty .fill { color:var(--fg3); font-style:italic; }
+  .slot .fill { flex:1; }
+  .needs { display:flex; flex-wrap:wrap; gap:5px; padding:6px 10px 10px; }
+  .need { font-size:11px; padding:2px 8px; border-radius:20px; background:#0c1116; border:1px solid var(--border2); color:var(--fg2); }
+  .need b { color:var(--amber); }
+  .qitem { display:flex; align-items:center; gap:6px; padding:4px 6px; font-size:12px; }
+  .qwarn { color:var(--red); font-size:11px; }
+  .empty-note { color:var(--fg3); padding:14px; text-align:center; font-size:12px; }
+  .setup { display:flex; gap:8px; align-items:center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>WAR ROOM</h1>
+  <div class="setup">
+    <input id="draftId" placeholder="Sleeper draft id" style="width:200px">
+    <input id="mySlot" placeholder="slot" style="width:56px">
+    <button onclick="enter()">Enter draft room</button>
+  </div>
+  <div class="spacer"></div>
+  <span class="conn"><span id="dot" class="dot"></span><span id="connText">not connected</span></span>
+  <a href="/import">Import</a>
+</header>
+<div id="stalebar" class="stalebar">⚠ STALE DATA — reconnecting to Sleeper…</div>
+
+<div class="ticker">
+  <span class="lbl">Last picks</span>
+  <span id="ticker"></span>
+  <div class="clockbar">
+    <span id="clock" class="clock">—</span>
+  </div>
+</div>
+
+<main>
+  <section class="col">
+    <h2>Best available</h2>
+    <div class="filters" id="filters"></div>
+    <div class="scroll" id="board"><div class="empty-note">Enter a draft to load recommendations.</div></div>
+  </section>
+
+  <section class="col" style="background:transparent; border:0;">
+    <div id="onclock"></div>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <section class="col">
+    <h2>My roster</h2>
+    <div class="slots" id="roster"></div>
+    <div class="needs" id="needs"></div>
+    <h2>Queue</h2>
+    <div class="scroll" id="queue" style="max-height:220px; flex:none;"></div>
+  </section>
+</main>
+
+<script>
+const POSITIONS = ["ALL","QB","RB","WR","TE","K","DEF"];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => (s ?? "").toString().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let S = { draftId:null, mySlot:null, board:[], needs:{}, slots:{}, snap:null,
+          roster:[], filter:"ALL", queue:loadQueue(), es:null, refreshT:null, clock:null };
+
+function loadQueue() { try { return new Set(JSON.parse(localStorage.getItem("wr_queue")||"[]")); } catch { return new Set(); } }
+function saveQueue() { try { localStorage.setItem("wr_queue", JSON.stringify([...S.queue])); } catch {} }
+
+async function api(method, url) {
+  const r = await fetch(url, { method });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.detail || r.statusText);
+  return d;
+}
+
+async function enter() {
+  const id = $("draftId").value.trim(); const slot = parseInt($("mySlot").value, 10);
+  if (!id) return alert("Enter a Sleeper draft id");
+  S.draftId = id; S.mySlot = Number.isFinite(slot) ? slot : null;
+  try {
+    await fetch(`/api/drafts/${encodeURIComponent(id)}/session`, {
+      method:"POST", headers:{ "content-type":"application/json" },
+      body: JSON.stringify(S.mySlot ? { my_slot:S.mySlot } : {}) });
+  } catch {}
+  connectSSE(); await refresh();
+  try { history.replaceState(null,"",`?draft=${encodeURIComponent(id)}&slot=${S.mySlot||""}`); } catch {}
+}
+
+function connectSSE() {
+  if (S.es) S.es.close();
+  const es = new EventSource(`/api/drafts/${encodeURIComponent(S.draftId)}/events`);
+  S.es = es;
+  es.onopen = () => setConn(true);
+  es.onerror = () => setConn(false);
+  for (const t of ["pick","resync","on_clock","status"]) es.addEventListener(t, scheduleRefresh);
+  es.addEventListener("stale", () => { $("stalebar").classList.add("on"); $("dot").className="dot stale"; });
+  es.addEventListener("recovered", () => { $("stalebar").classList.remove("on"); setConn(true); });
+}
+function setConn(live) {
+  $("dot").className = "dot " + (live ? "live":"");
+  $("connText").textContent = live ? `live · draft ${S.draftId}` : "reconnecting…";
+}
+function scheduleRefresh() { clearTimeout(S.refreshT); S.refreshT = setTimeout(refresh, 250); }
+
+async function refresh() {
+  if (!S.draftId) return;
+  try {
+    const slotQ = S.mySlot ? `&my_slot=${S.mySlot}` : "";
+    const [rec, snap, picks] = await Promise.all([
+      api("GET", `/api/drafts/${S.draftId}/recommendations?limit=160${slotQ}`),
+      api("GET", `/api/drafts/${S.draftId}`),
+      api("GET", `/api/drafts/${S.draftId}/picks`),
+    ]);
+    S.board = rec.recommendations; S.needs = rec.needs; S.slots = rec.slots || {};
+    S.rec = rec; S.snap = snap;
+    S.roster = picks.filter(p => S.mySlot && p.draft_slot === S.mySlot);
+    render();
+  } catch (e) {
+    $("board").innerHTML = `<div class="empty-note">${esc(e.message)}</div>`;
+  }
+}
+
+function render() { renderFilters(); renderTicker(); renderClock(); renderBoard(); renderCards(); renderRoster(); renderNeeds(); renderQueue(); }
+
+function renderFilters() {
+  $("filters").innerHTML = POSITIONS.map(p =>
+    `<button class="${S.filter===p?'on':''}" onclick="setFilter('${p}')">${p}</button>`).join("");
+}
+function setFilter(p) { S.filter = p; renderFilters(); renderBoard(); }
+
+function posChip(p) { return `<span class="pos ${esc(p)}">${esc(p)}</span>`; }
+
+function renderTicker() {
+  const picks = (S.snap && S.snap.last_picks) || [];
+  $("ticker").innerHTML = picks.slice(-10).map(p =>
+    `<span class="chip">${posChip(p.player.position||'?')} ${esc(p.player.name)} <span class="team">${esc(p.label)}</span></span>`
+  ).join("") || '<span class="team">waiting for picks…</span>';
+}
+function renderClock() {
+  const r = S.rec; if (!r) { $("clock").textContent = "—"; return; }
+  const c = $("clock");
+  if (r.picks_until === 0) { c.className="clock now"; c.textContent = "🟢 YOU'RE ON THE CLOCK"; return; }
+  if (r.picks_until == null) { c.className="clock"; c.textContent = S.snap ? `pick ${S.snap.pick_count}` : "—"; return; }
+  const mins = r.pick_timer ? ` · ~${Math.round(r.picks_until * r.pick_timer / 60)} min` : "";
+  c.className = "clock" + (r.picks_until <= 2 ? " alert":"");
+  c.textContent = `You pick in ${r.picks_until} (${r.my_next_pick||"?"})${mins}`;
+}
+
+function renderBoard() {
+  const list = S.board.filter(p => S.filter==="ALL" || p.position===S.filter);
+  if (!list.length) { $("board").innerHTML = '<div class="empty-note">No available players.</div>'; return; }
+  let html = ""; let lastTier = null;
+  for (const p of list) {
+    if (p.tier !== lastTier) { html += `<div class="tierband">${esc(p.position!=='ALL'?p.position:'')} Tier ${p.tier ?? '—'}</div>`; lastTier = p.tier; }
+    const sv = p.survival!=null ? `${Math.round(p.survival*100)}%` : "";
+    const flags = (p.flags||[]).slice(0,2).map(f=>`<span class="flag">${esc(f)}</span>`).join("");
+    const star = S.queue.has(p.sleeper_id) ? "on" : "";
+    html += `<div class="prow">
+      <span class="star ${star}" onclick="toggleQ('${p.sleeper_id}')">★</span>
+      ${posChip(p.position)}
+      <span class="nm">${esc(p.name)} <span class="team">${esc(p.team||'')}</span> ${flags}</span>
+      <span class="sv">${sv}</span></div>`;
+  }
+  $("board").innerHTML = html;
+}
+
+function renderCards() {
+  const top = S.board.slice(0, 3);
+  const oc = $("onclock");
+  if (S.rec && S.rec.picks_until === 0) oc.innerHTML = `<div class="onclock">🟢 You're on the clock — pick ${esc(S.rec.my_next_pick||'')}</div>`;
+  else oc.innerHTML = "";
+  if (!top.length) { $("cards").innerHTML = '<div class="empty-note">Recommendations appear here once rankings are imported and a draft is live.</div>'; return; }
+  $("cards").innerHTML = top.map((p, i) => {
+    const sv = p.survival!=null ? `${Math.round(p.survival*100)}%` : "—";
+    const flags = (p.flags||[]).map(f=>`<span class="flag">${esc(f)}</span>`).join(" ");
+    const reasons = (p.reasons||[]).map(r=>`<li>${esc(r)}</li>`).join("");
+    return `<div class="card ${i===0?'top':''}">
+      <div class="rank">#${i+1} · composite ${p.composite}</div>
+      <div class="name">${esc(p.name)}</div>
+      <div class="meta">${posChip(p.position)} ${esc(p.team||'')} · Tier ${p.tier ?? '—'} ${flags}</div>
+      <div><span class="stat">VOR <b>${p.vor}</b></span>
+           <span class="stat">Back <b>${sv}</b></span>
+           <button class="ghost tiny" onclick="toggleQ('${p.sleeper_id}')">${S.queue.has(p.sleeper_id)?'★ queued':'☆ queue'}</button></div>
+      <ul class="reasons">${reasons}</ul></div>`;
+  }).join("");
+}
+
+function renderRoster() {
+  const slots = S.slots; if (!Object.keys(slots).length) { $("roster").innerHTML = ""; return; }
+  // greedily assign my drafted players to slots
+  const pool = S.roster.map(p => ({ pos:p.player.position, name:p.player.name }));
+  const order = ["QB","RB","WR","TE","FLEX","SUPER_FLEX","K","DEF","BN"];
+  const flexOK = { FLEX:["RB","WR","TE"], SUPER_FLEX:["QB","RB","WR","TE"], BN:["QB","RB","WR","TE","K","DEF"] };
+  const rows = [];
+  for (const tag of order) {
+    const n = slots[tag] || 0;
+    for (let k=0;k<n;k++) {
+      let idx = pool.findIndex(pl => flexOK[tag] ? flexOK[tag].includes(pl.pos) : pl.pos===tag);
+      const fill = idx>=0 ? pool.splice(idx,1)[0] : null;
+      rows.push(`<div class="slot ${fill?'':'empty'}"><span class="tag">${tag}</span>
+        <span class="fill">${fill ? esc(fill.name) : 'empty'}</span></div>`);
+    }
+  }
+  $("roster").innerHTML = rows.join("");
+}
+function renderNeeds() {
+  const n = S.needs || {};
+  const items = Object.entries(n).map(([p,c])=>`<span class="need">${esc(p)} <b>${c}</b></span>`);
+  $("needs").innerHTML = items.length ? items.join("") : '<span class="need">roster starters full</span>';
+}
+function renderQueue() {
+  const byId = Object.fromEntries(S.board.map(p=>[p.sleeper_id,p]));
+  const items = [...S.queue].map(id => {
+    const p = byId[id];
+    if (!p) return `<div class="qitem"><span class="star on" onclick="toggleQ('${id}')">★</span><span class="team">drafted / not available</span></div>`;
+    const sv = p.survival!=null ? Math.round(p.survival*100) : null;
+    const warn = sv!=null && sv < 25 ? `<span class="qwarn">${sv}% — take him or lose him</span>` : (sv!=null?`<span class="team">${sv}% back</span>`:"");
+    return `<div class="qitem"><span class="star on" onclick="toggleQ('${id}')">★</span>${posChip(p.position)}
+      <span class="nm">${esc(p.name)}</span> ${warn}</div>`;
+  });
+  $("queue").innerHTML = items.length ? items.join("") : '<div class="empty-note">Pin players with ★ to watch survival odds.</div>';
+}
+function toggleQ(id) { if (S.queue.has(id)) S.queue.delete(id); else S.queue.add(id); saveQueue(); renderBoard(); renderCards(); renderQueue(); }
+
+// deep link ?draft=&slot=
+(function(){
+  const q = new URLSearchParams(location.search);
+  if (q.get("draft")) { $("draftId").value = q.get("draft"); $("mySlot").value = q.get("slot")||""; enter(); }
+})();
+</script>
+</body>
+</html>

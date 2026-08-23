@@ -9,7 +9,7 @@ from warroom.api.deps import get_db, get_player_sync, get_session_manager
 from warroom.db import repo
 from warroom.db.models import Draft
 from warroom.engine import assemble
-from warroom.engine.models import Preferences
+from warroom.engine.models import EngineConfig, Preferences
 from warroom.engine.recommend import recommend
 from warroom.platforms.base import PlatformNotFound
 from warroom.sync.draft_session import SessionManager
@@ -109,6 +109,7 @@ def get_recommendations(
     sessions: Sessions,
     my_slot: int | None = None,
     scoring: str | None = None,
+    limit: int = 8,
 ) -> dict[str, Any]:
     """Best available picks for the drafting team, from the committed ranking sets +
     this draft's live pick state (Phase 3 engine over Phase 1/2 data)."""
@@ -129,13 +130,29 @@ def get_recommendations(
         )
     league = assemble.build_league_from_draft(draft)
     state = assemble.build_draft_state(db, draft, my_slot=my_slot, my_roster_id=my_roster_id)
-    result = recommend(state, data, Preferences(), league)
+    config = EngineConfig(top_n=max(1, min(limit, 300)))
+    result = recommend(state, data, Preferences(), league, config)
+
+    picks_until = None
+    if state.my_next_pick_no:
+        picks_until = max(0, state.my_next_pick_no - state.current_pick_no)
+
+    slots = {
+        **league.starters,
+        "FLEX": league.flex,
+        "SUPER_FLEX": league.superflex,
+        "BN": int((draft.settings or {}).get("slots_bn", 0) or 0),
+    }
 
     return {
         "draft_id": draft_id,
         "my_slot": my_slot,
         "my_next_pick": state.my_next_pick_label,
+        "my_next_pick_no": state.my_next_pick_no,
+        "picks_until": picks_until,
+        "pick_timer": draft.pick_timer,
         "needs": result.needs,
+        "slots": {k: v for k, v in slots.items() if v},
         "compute_ms": round(result.compute_ms, 1),
         "recommendations": [
             {

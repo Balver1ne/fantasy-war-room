@@ -113,6 +113,19 @@ async def test_recommendations_endpoint(api):
     assert body["needs"]["RB"] >= 1
 
 
+async def test_recommendations_board_fields(api):
+    r = await api.get("/api/drafts/D1/recommendations?my_slot=3&limit=50")
+    b = r.json()
+    assert b["slots"]["RB"] == 2 and b["slots"]["FLEX"] == 1
+    assert "picks_until" in b and "my_next_pick_no" in b and "pick_timer" in b
+    assert len(b["recommendations"]) <= 50
+
+
+async def test_board_page_served(api):
+    r = await api.get("/board")
+    assert r.status_code == 200 and "WAR ROOM" in r.text
+
+
 async def test_recommendations_requires_rankings(settings, session_factory):
     # draft exists but no ranking sets committed
     with session_factory() as s:

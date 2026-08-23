@@ -100,4 +100,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def import_console() -> FileResponse:
         return FileResponse(STATIC_DIR / "import.html")
 
+    @app.get("/board", include_in_schema=False)
+    def draft_room() -> FileResponse:
+        return FileResponse(STATIC_DIR / "draftroom.html")
+
     return app
