@@ -58,8 +58,14 @@ deliverable is unproven. Matching quality is the app.
   passed). Matching engine (alias/exact/fuzzy, collisions to queue), CSV + PDF importers,
   column-mapping wizard, versioned ranking sets (deletable), user-defined flags,
   `/import` console. Verified vs the real 12k universe: FantasyPros 99.2%, TFH rankings
-  100%, flags (sleeper/breakout/bust/value_pick) in `player_flags`. Next: Phase 3 —
-  recommendation engine (DESIGN.md §5). Real research files live OUTSIDE the repo at
+  100%, flags (sleeper/breakout/bust/value_pick) in `player_flags`.
+  Real research files live OUTSIDE the repo at
   `C:\Users\Paul\Documents\fantasy_football_research` (subscriber content, never committed;
   don't copy into the repo). PDF parsers are text-based (pdfplumber); handcuffs layout
   uses the paste fallback by design.
+- Phase 3 (recommendation engine, DESIGN.md §5) built on branch
+  `phase-3-recommendation-engine`, awaiting review. Pure engine in `warroom/engine/`
+  (consensus/vbd/survival/adjustments/tiebreak/reasons/recommend) — 36 unit tests + snake
+  replay, ~1ms. `engine/assemble.py` builds inputs from DB; `GET /api/drafts/{id}/
+  recommendations` serves top-8 with reasons. 157 tests total. Live-verified on the real
+  board (67ms). Next: Phase 4 — Draft Room UI (surface recommendations live).
