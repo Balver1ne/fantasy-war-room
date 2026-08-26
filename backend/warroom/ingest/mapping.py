@@ -15,7 +15,7 @@ FIELD_KEYWORDS: dict[str, list[str]] = {
     "rank": ["rk", "rank", "ecr", "overall"],
     "tier": ["tier", "tiers"],
     "position_rank": ["pos rank", "position rank", "posrk"],
-    "projection": ["proj", "projection", "fpts", "points"],
+    "projection": ["proj", "projection", "fpts", "points", "pts/wk", "pts wk", "ppg", "pts"],
     "adp": ["adp", "avg pick", "average draft"],
     "bye": ["bye"],
     "notes": ["notes", "note", "comment"],

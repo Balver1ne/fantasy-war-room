@@ -121,6 +121,17 @@ async def test_recommendations_board_fields(api):
     assert len(b["recommendations"]) <= 50
 
 
+async def test_recommendations_source_breakdown(api):
+    r = await api.get("/api/drafts/D1/recommendations?my_slot=3&limit=50")
+    b = r.json()
+    assert "source_labels" in b and "FantasyPros" in b["source_labels"]
+    rec = b["recommendations"][0]
+    assert "sources" in rec and rec["sources"]
+    src = rec["sources"][0]
+    assert "label" in src and "overall" in src   # seeded board has overall ranks
+    assert "pts_wk" in rec                         # present (None here — no projection seeded)
+
+
 async def test_board_page_served(api):
     r = await api.get("/board")
     assert r.status_code == 200 and "WAR ROOM" in r.text

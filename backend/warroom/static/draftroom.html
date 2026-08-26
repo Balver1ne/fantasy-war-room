@@ -52,11 +52,18 @@
   .filters button.on { background:var(--accent2); color:#fff; border-color:var(--accent2); }
 
   .tierband { font-size:10px; color:var(--fg3); text-transform:uppercase; letter-spacing:.08em; margin:8px 6px 3px; border-top:1px dashed var(--border2); padding-top:5px; }
-  .prow { display:flex; align-items:center; gap:8px; padding:5px 6px; border-radius:6px; }
+  .prow { display:flex; flex-direction:column; gap:2px; padding:5px 6px; border-radius:6px; }
   .prow:hover { background:var(--panel2); }
+  .prow .main { display:flex; align-items:center; gap:8px; }
   .prow .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .prow .sv { font-size:11px; color:var(--fg2); width:38px; text-align:right; }
+  .prow .sv { font-size:11px; color:var(--fg2); width:36px; text-align:right; }
+  .prow .pw { font-size:11px; color:var(--green); width:40px; text-align:right; }
   .prow .team { color:var(--fg3); font-size:11px; }
+  .bdline { font-size:10px; color:var(--fg3); padding-left:26px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bd b { color:var(--fg2); font-weight:600; }
+  .breakdown { font-size:11px; color:var(--fg2); margin-top:8px; display:flex; flex-wrap:wrap; gap:8px; }
+  .breakdown .src { background:#0c1116; border:1px solid var(--border2); border-radius:5px; padding:2px 7px; }
+  .breakdown .src b { color:#eef2f6; }
   .flag { font-size:9px; padding:1px 4px; border-radius:3px; background:#20272f; color:var(--purple); border:1px solid var(--border2); }
   .star { cursor:pointer; color:var(--fg3); } .star.on { color:var(--amber); }
 
@@ -220,6 +227,14 @@ function renderClock() {
   c.textContent = `You pick in ${r.picks_until} (${r.my_next_pick||"?"})${mins}`;
 }
 
+function bdInline(p) {
+  if (!p.sources || !p.sources.length) return "";
+  return p.sources.map(s => {
+    const proj = s.proj!=null ? ` ${s.proj}` : "";
+    return `<span class="bd" title="${esc(s.source)}">${esc(s.label)} <b>${esc(s.pos||'')}</b>${proj}</span>`;
+  }).join(" · ");
+}
+
 function renderBoard() {
   const list = S.board.filter(p => S.filter==="ALL" || p.position===S.filter);
   if (!list.length) { $("board").innerHTML = '<div class="empty-note">No available players.</div>'; return; }
@@ -227,13 +242,19 @@ function renderBoard() {
   for (const p of list) {
     if (p.tier !== lastTier) { html += `<div class="tierband">${esc(p.position!=='ALL'?p.position:'')} Tier ${p.tier ?? '—'}</div>`; lastTier = p.tier; }
     const sv = p.survival!=null ? `${Math.round(p.survival*100)}%` : "";
+    const pw = p.pts_wk!=null ? p.pts_wk : "";
     const flags = (p.flags||[]).slice(0,2).map(f=>`<span class="flag">${esc(f)}</span>`).join("");
     const star = S.queue.has(p.sleeper_id) ? "on" : "";
+    const bd = bdInline(p);
     html += `<div class="prow">
-      <span class="star ${star}" onclick="toggleQ('${p.sleeper_id}')">★</span>
-      ${posChip(p.position)}
-      <span class="nm">${esc(p.name)} <span class="team">${esc(p.team||'')}</span> ${flags}</span>
-      <span class="sv">${sv}</span></div>`;
+      <div class="main">
+        <span class="star ${star}" onclick="toggleQ('${p.sleeper_id}')">★</span>
+        ${posChip(p.position)}
+        <span class="nm">${esc(p.name)} <span class="team">${esc(p.team||'')}</span> ${flags}</span>
+        <span class="pw" title="pts/wk">${pw}</span>
+        <span class="sv" title="% back">${sv}</span>
+      </div>
+      ${bd ? `<div class="bdline">${bd}</div>` : ""}</div>`;
   }
   $("board").innerHTML = html;
 }
@@ -248,13 +269,19 @@ function renderCards() {
     const sv = p.survival!=null ? `${Math.round(p.survival*100)}%` : "—";
     const flags = (p.flags||[]).map(f=>`<span class="flag">${esc(f)}</span>`).join(" ");
     const reasons = (p.reasons||[]).map(r=>`<li>${esc(r)}</li>`).join("");
+    const bd = (p.sources||[]).map(s => {
+      const proj = s.proj!=null ? ` · ${s.proj}pts` : "";
+      return `<span class="src">${esc(s.label)} <b>${esc(s.pos||'')}</b>${proj}</span>`;
+    }).join("");
+    const ptswk = p.pts_wk!=null ? `<span class="stat">Pts/wk <b>${p.pts_wk}</b></span>` : "";
     return `<div class="card ${i===0?'top':''}">
       <div class="rank">#${i+1} · composite ${p.composite}</div>
       <div class="name">${esc(p.name)}</div>
       <div class="meta">${posChip(p.position)} ${esc(p.team||'')} · Tier ${p.tier ?? '—'} ${flags}</div>
       <div><span class="stat">VOR <b>${p.vor}</b></span>
-           <span class="stat">Back <b>${sv}</b></span>
+           <span class="stat">Back <b>${sv}</b></span>${ptswk}
            <button class="ghost tiny" onclick="toggleQ('${p.sleeper_id}')">${S.queue.has(p.sleeper_id)?'★ queued':'☆ queue'}</button></div>
+      ${bd ? `<div class="breakdown">${bd}</div>` : ""}
       <ul class="reasons">${reasons}</ul></div>`;
   }).join("");
 }

@@ -102,6 +102,46 @@ def get_draft_picks(draft_id: str, db: Db) -> list[dict[str, Any]]:
     return result
 
 
+def _source_labels(source_names: list[str]) -> dict[str, str]:
+    """Short, unique display codes per ranking source (e.g. football_absurdity → FA)."""
+    labels: dict[str, str] = {}
+    used: set[str] = set()
+    for name in source_names:
+        parts = [p for p in re.split(r"[_\s]+", name) if p]
+        ab = "".join(p[0] for p in parts).upper() if len(parts) >= 2 else name[:3].upper()
+        base, i = ab, 2
+        while ab in used:
+            ab = f"{base}{i}"
+            i += 1
+        used.add(ab)
+        labels[name] = ab
+    return labels
+
+
+def _breakdown(sid: str, position: str, data, labels: dict[str, str]):
+    """Per-source view of a player: how each source ranks him within his position,
+    plus any projection (Football Absurdity's pts/wk)."""
+    out: list[dict[str, Any]] = []
+    pts_wk: float | None = None
+    for source, rows in data.sources.items():
+        row = rows.get(sid)
+        if row is None:
+            continue
+        entry: dict[str, Any] = {"source": source, "label": labels.get(source, source[:3].upper())}
+        if row.position_rank is not None:
+            entry["pos"] = f"{position}{row.position_rank}"
+        elif row.rank is not None:
+            entry["pos"] = f"#{row.rank}"
+        if row.rank is not None:
+            entry["overall"] = row.rank
+        if row.projection is not None:
+            entry["proj"] = round(row.projection, 1)
+            if pts_wk is None:
+                pts_wk = round(row.projection, 1)
+        out.append(entry)
+    return out, pts_wk
+
+
 @router.get("/drafts/{draft_id}/recommendations")
 def get_recommendations(
     draft_id: str,
@@ -144,6 +184,17 @@ def get_recommendations(
         "BN": int((draft.settings or {}).get("slots_bn", 0) or 0),
     }
 
+    labels = _source_labels(list(data.sources.keys()))
+    recs = []
+    for r in result.recommendations:
+        breakdown, pts_wk = _breakdown(r.sleeper_id, r.position, data, labels)
+        recs.append({
+            "sleeper_id": r.sleeper_id, "name": r.name, "position": r.position,
+            "team": r.team, "composite": r.composite_score, "vor": r.base_vor,
+            "tier": r.tier, "survival": r.survival_prob, "flags": r.flags,
+            "reasons": r.reasons, "pts_wk": pts_wk, "sources": breakdown,
+        })
+
     return {
         "draft_id": draft_id,
         "my_slot": my_slot,
@@ -153,16 +204,9 @@ def get_recommendations(
         "pick_timer": draft.pick_timer,
         "needs": result.needs,
         "slots": {k: v for k, v in slots.items() if v},
+        "source_labels": labels,
         "compute_ms": round(result.compute_ms, 1),
-        "recommendations": [
-            {
-                "sleeper_id": r.sleeper_id, "name": r.name, "position": r.position,
-                "team": r.team, "composite": r.composite_score, "vor": r.base_vor,
-                "tier": r.tier, "survival": r.survival_prob, "flags": r.flags,
-                "reasons": r.reasons,
-            }
-            for r in result.recommendations
-        ],
+        "recommendations": recs,
     }
 
 
