@@ -80,6 +80,46 @@ def test_board_value_ordered_keeps_filled_positions_with_vorp_vona():
     assert rbs[0].vona is not None and rbs[0].vona > 0
 
 
+def test_kdef_not_recommended_before_round_12():
+    spec = [(str(i), f"P{i}", ["RB", "WR", "TE", "QB"][i % 4], i + 1) for i in range(40)]
+    spec += [("k1", "K1", "K", 41), ("d1", "D1", "DEF", 42)]
+    data = make_data(spec)
+    league = league_1qb()  # 12-team
+
+    # round 3 (pick 30): K/DEF locked out — composite driven far negative
+    early = recommend(
+        DraftState(current_pick_no=30, my_next_pick_no=31), data, Preferences(),
+        league, EngineConfig(top_n=8),
+    )
+    ecomp = {b.sleeper_id: b.composite for b in early.board}
+    assert ecomp["k1"] < -100 and ecomp["d1"] < -100
+    assert "K" not in {r.position for r in early.recommendations}
+    assert "DEF" not in {r.position for r in early.recommendations}
+
+    # round 12 (pick 133): the lock lifts
+    late = recommend(
+        DraftState(current_pick_no=133, my_next_pick_no=134), data, Preferences(),
+        league, EngineConfig(top_n=8),
+    )
+    lcomp = {b.sleeper_id: b.composite for b in late.board}
+    assert lcomp["k1"] > -100 and lcomp["d1"] > -100  # no longer penalized
+
+
+def test_non_startable_position_never_recommended():
+    # a fullback has no roster slot in a standard league — never a recommendation
+    spec = [(str(i), f"P{i}", ["RB", "WR", "TE", "QB"][i % 4], i + 1) for i in range(20)]
+    spec += [("fb1", "Fullback One", "FB", 5)]  # ranked high, but unstartable
+    data = make_data(spec)
+    res = recommend(
+        DraftState(current_pick_no=97, my_next_pick_no=99), data, Preferences(),
+        league_1qb(), EngineConfig(top_n=8),
+    )
+    assert "FB" not in {r.position for r in res.recommendations}
+    fb = next(b for b in res.board if b.sleeper_id == "fb1")
+    assert fb.composite < -100  # sunk out of contention
+    assert fb in res.board       # but still visible on the value board
+
+
 def test_no_available_players_returns_empty():
     data = make_data(big_board(5))
     ds = DraftState(drafted={"0", "1", "2", "3", "4"}, my_next_pick_no=15)

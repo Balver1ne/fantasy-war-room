@@ -68,6 +68,20 @@ def recommend(
     my_counts = adjustments.count_positions(draft_state.my_roster, pos_of)
     needs = _needs(my_counts, league)
 
+    current_round = (
+        (draft_state.current_pick_no - 1) // league.team_count + 1
+        if league.team_count else 1
+    )
+    kdef_locked = current_round < config.kdef_earliest_round
+
+    # Positions that can actually start (or fill FLEX/SUPERFLEX). Anything else — e.g. a
+    # fullback with no roster slot — is never a recommendation.
+    startable = {p for p, c in league.starters.items() if c > 0}
+    if league.flex:
+        startable |= set(FLEX_POSITIONS)
+    if league.superflex:
+        startable.add("QB")
+
     scored: list[tiebreak.Scored] = []
     info_by_sid: dict[str, dict] = {}
     for sid in available:
@@ -86,6 +100,12 @@ def recommend(
         # An over-rostered / hard-capped position must sink below any genuinely useful
         # player, even a below-replacement one — never surface a pointless extra QB/K/DEF.
         if need_mult <= 0.021:
+            composite -= config.over_cap_penalty
+        # Never recommend a kicker/defense before their round — they're late-draft picks.
+        if kdef_locked and pos in config.kdef_positions:
+            composite -= config.over_cap_penalty
+        # Never recommend a position that can't start (e.g. fullback — no roster slot).
+        if pos not in startable:
             composite -= config.over_cap_penalty
         scored.append(tiebreak.Scored(sid, composite, surv))
         info_by_sid[sid] = {

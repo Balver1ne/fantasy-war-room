@@ -81,6 +81,9 @@ class EngineConfig:
     need_fill_decay: float = 0.55        # multiplier per starter filled beyond need
     hard_cap_positions: tuple[str, ...] = ("K", "DEF")
     over_cap_penalty: float = 1000.0     # pushes over-rostered positions below any real option
+    # Don't recommend a kicker/defense before this round — they're late-draft picks.
+    kdef_earliest_round: int = 12
+    kdef_positions: tuple[str, ...] = ("K", "DEF")
     my_guy_tier_value: float = 8.0       # value points per tier of My-Guys boost
     cliff_boost: float = 0.2             # urgency bump when a player ends a tier at a cliff
 
