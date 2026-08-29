@@ -1,8 +1,30 @@
 from engine_helpers import make_data
 from warroom.engine import consensus
-from warroom.engine.models import EngineConfig
+from warroom.engine.models import EngineConfig, PlayerMeta, RankingData, RankRow
 
 CFG = EngineConfig()
+
+
+def test_position_only_source_anchors_to_consensus():
+    """A source that provides only positional ranks (Football Absurdity by position)
+    contributes to the blend by anchoring RBn onto the rank-capable consensus."""
+    players = {s: PlayerMeta(s, s.upper(), "RB") for s in ["a", "b", "c"]}
+    overall = {"a": RankRow(rank=1), "b": RankRow(rank=2), "c": RankRow(rank=3)}
+    # position-only source disagrees: it likes b (RB1), then c (RB2), then a (RB3)
+    posonly = {"a": RankRow(position_rank=3), "b": RankRow(position_rank=1),
+               "c": RankRow(position_rank=2)}
+    data = RankingData(players=players, sources={"O": overall, "P": posonly},
+                       weights={"O": 1.0, "P": 1.0})
+    blended = consensus.blend_values(data, CFG)
+    # the position-only source lifts b above a even though O ranked a first
+    assert blended["b"] > blended["a"] > blended["c"]
+
+
+def test_no_position_only_source_is_unchanged():
+    # when every source has overall ranks, the blend is the plain overall blend
+    data = make_data([("a", "A", "RB", 1), ("b", "B", "RB", 2)])
+    blended = consensus.blend_values(data, CFG)
+    assert blended["a"] == 100.0
 
 
 def test_value_curve_monotonic_and_top_heavy():
