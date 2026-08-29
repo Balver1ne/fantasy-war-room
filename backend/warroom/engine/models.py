@@ -31,6 +31,7 @@ class RankingData:
     adp: dict[str, float] = field(default_factory=dict)              # sleeper_id -> ADP
     flags: dict[str, dict[str, float | bool]] = field(default_factory=dict)
     flag_priority: dict[str, int] = field(default_factory=dict)      # flag_name -> priority
+    flag_kinds: dict[str, str] = field(default_factory=dict)         # flag_name -> kind
 
 
 @dataclass

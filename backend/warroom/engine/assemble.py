@@ -69,9 +69,11 @@ def build_ranking_data(session: Session, scoring_format: str | None = None) -> R
         flags.setdefault(pf.sleeper_id, {})[pf.flag_name] = value
         referenced.add(pf.sleeper_id)
 
-    flag_priority = {
-        ft.flag_name: ft.tiebreak_priority for ft in session.scalars(select(FlagType))
-    }
+    flag_priority: dict[str, int] = {}
+    flag_kinds: dict[str, str] = {}
+    for ft in session.scalars(select(FlagType)):
+        flag_priority[ft.flag_name] = ft.tiebreak_priority
+        flag_kinds[ft.flag_name] = ft.value_kind
 
     players: dict[str, PlayerMeta] = {}
     if referenced:
@@ -80,7 +82,7 @@ def build_ranking_data(session: Session, scoring_format: str | None = None) -> R
 
     return RankingData(
         players=players, sources=sources, weights=weights,
-        adp=adp, flags=flags, flag_priority=flag_priority,
+        adp=adp, flags=flags, flag_priority=flag_priority, flag_kinds=flag_kinds,
     )
 
 

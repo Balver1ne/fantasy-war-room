@@ -343,7 +343,7 @@ def commit(session: Session, job: ImportJob, *, label: str | None = None) -> Ran
                     sleeper_id=sid,
                     flag_name=flag_name,
                     value_bool=to_bool(raw) if kind == "bool" else None,
-                    value_num=to_float(raw) if kind == "numeric" else None,
+                    value_num=to_float(raw) if kind in ("numeric", "rating") else None,
                     source=job.source,
                     ranking_set_id=rset.id,
                 )

@@ -150,6 +150,7 @@ def get_recommendations(
     my_slot: int | None = None,
     scoring: str | None = None,
     limit: int = 8,
+    sources: str | None = None,
 ) -> dict[str, Any]:
     """Best available picks for the drafting team, from the committed ranking sets +
     this draft's live pick state (Phase 3 engine over Phase 1/2 data)."""
@@ -168,6 +169,15 @@ def get_recommendations(
             status_code=400,
             detail="No active ranking sets — import rankings on /import first.",
         )
+
+    all_sources = list(data.sources.keys())
+    labels = _source_labels(all_sources)
+    if sources:  # a ranking profile: only blend the chosen sources
+        chosen = {s.strip() for s in sources.split(",") if s.strip()} & set(all_sources)
+        if chosen:
+            data.sources = {k: v for k, v in data.sources.items() if k in chosen}
+            data.weights = {k: v for k, v in data.weights.items() if k in chosen}
+
     league = assemble.build_league_from_draft(draft)
     state = assemble.build_draft_state(db, draft, my_slot=my_slot, my_roster_id=my_roster_id)
     config = EngineConfig(top_n=max(1, min(limit, 300)))
@@ -184,15 +194,32 @@ def get_recommendations(
         "BN": int((draft.settings or {}).get("slots_bn", 0) or 0),
     }
 
-    labels = _source_labels(list(data.sources.keys()))
+    # Rating scales (default 5) inferred from the highest observed value per rating flag.
+    rating_max: dict[str, int] = {}
+    for flags in data.flags.values():
+        for name, val in flags.items():
+            if data.flag_kinds.get(name) == "rating" and isinstance(val, (int, float)):
+                rating_max[name] = max(rating_max.get(name, 5), int(round(val)))
+
+    def _flags_ratings(sid: str):
+        bool_flags, ratings = [], []
+        for name, val in data.flags.get(sid, {}).items():
+            kind = data.flag_kinds.get(name, "bool")
+            if kind == "rating":
+                ratings.append({"name": name, "value": val, "max": rating_max.get(name, 5)})
+            elif kind == "bool" and val:
+                bool_flags.append(name)
+        return sorted(bool_flags), sorted(ratings, key=lambda r: r["name"])
+
     recs = []
     for r in result.recommendations:
         breakdown, pts_wk = _breakdown(r.sleeper_id, r.position, data, labels)
+        bool_flags, ratings = _flags_ratings(r.sleeper_id)
         recs.append({
             "sleeper_id": r.sleeper_id, "name": r.name, "position": r.position,
             "team": r.team, "composite": r.composite_score, "vor": r.base_vor,
-            "tier": r.tier, "survival": r.survival_prob, "flags": r.flags,
-            "reasons": r.reasons, "pts_wk": pts_wk, "sources": breakdown,
+            "tier": r.tier, "survival": r.survival_prob, "flags": bool_flags,
+            "ratings": ratings, "reasons": r.reasons, "pts_wk": pts_wk, "sources": breakdown,
         })
 
     return {
@@ -205,6 +232,7 @@ def get_recommendations(
         "needs": result.needs,
         "slots": {k: v for k, v in slots.items() if v},
         "source_labels": labels,
+        "sources_available": [{"source": s, "label": labels[s]} for s in all_sources],
         "compute_ms": round(result.compute_ms, 1),
         "recommendations": recs,
     }
