@@ -59,6 +59,27 @@ def test_recompute_under_200ms_full_board():
     assert res.recommendations
 
 
+def test_board_value_ordered_keeps_filled_positions_with_vorp_vona():
+    data = make_data(big_board())
+    # I already hold 2 RB (indices 0 and 2 are RB in the big_board pattern)
+    ds = DraftState(drafted={"0", "2"}, my_roster=["0", "2"], my_next_pick_no=15)
+    res = recommend(ds, data, Preferences(), league_1qb())
+    board = res.board
+
+    # value-ordered, and every available player is present (never pruned by need)
+    values = [b.value for b in board]
+    assert values == sorted(values, reverse=True)
+    assert len(board) == len(big_board()) - len(ds.drafted)
+
+    # filling RB does not remove RBs from the board
+    rbs = [b for b in board if b.position == "RB"]
+    assert len(rbs) > 5
+
+    # VORP present for all; VONA = drop-off to the next available RB is positive at the top
+    assert all(b.vorp is not None for b in board)
+    assert rbs[0].vona is not None and rbs[0].vona > 0
+
+
 def test_no_available_players_returns_empty():
     data = make_data(big_board(5))
     ds = DraftState(drafted={"0", "1", "2", "3", "4"}, my_next_pick_no=15)

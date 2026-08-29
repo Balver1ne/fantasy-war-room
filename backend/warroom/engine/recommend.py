@@ -10,6 +10,7 @@ from time import perf_counter
 from warroom.engine import adjustments, consensus, reasons, survival, tiebreak, vbd
 from warroom.engine.models import (
     FLEX_POSITIONS,
+    BoardEntry,
     DraftState,
     EngineConfig,
     LeagueSettings,
@@ -94,6 +95,40 @@ def recommend(
     order = tiebreak.order_with_tiebreaks(scored, data, config)
     comp_by_sid = {s.sleeper_id: s.composite for s in scored}
 
+    # VONA: value over the next available player at the same position (the drop-off).
+    vona: dict[str, float] = {}
+    by_pos: dict[str, list[str]] = {}
+    for sid in available:
+        by_pos.setdefault(data.players[sid].position, []).append(sid)
+    for pos, sids in by_pos.items():
+        sids.sort(key=lambda s: blended.get(s, 0.0), reverse=True)
+        floor = baselines.get(pos, 0.0)
+        for i, sid in enumerate(sids):
+            nxt = blended.get(sids[i + 1], floor) if i + 1 < len(sids) else floor
+            vona[sid] = blended.get(sid, 0.0) - nxt
+
+    # The value board: every available player, ordered by consensus value (never pruned
+    # by roster need — filling a slot must not remove options).
+    board = [
+        BoardEntry(
+            sleeper_id=sid,
+            name=data.players[sid].name,
+            position=data.players[sid].position,
+            team=data.players[sid].team,
+            value=round(blended.get(sid, 0.0), 2),
+            vorp=round(vor.get(sid, 0.0), 2),
+            vona=round(vona[sid], 2) if sid in vona else None,
+            composite=round(comp_by_sid.get(sid, 0.0), 2),
+            tier=tiers.get(sid),
+            survival_prob=(
+                round(info_by_sid[sid]["survival"], 3)
+                if info_by_sid[sid]["survival"] is not None else None
+            ),
+        )
+        for sid in available
+    ]
+    board.sort(key=lambda b: b.value, reverse=True)
+
     recs: list[Recommendation] = []
     for sid in order[: config.top_n]:
         meta = data.players[sid]
@@ -118,5 +153,6 @@ def recommend(
         )
 
     return RecommendationResult(
-        recommendations=recs, needs=needs, compute_ms=(perf_counter() - t0) * 1000.0
+        recommendations=recs, board=board, needs=needs,
+        compute_ms=(perf_counter() - t0) * 1000.0
     )

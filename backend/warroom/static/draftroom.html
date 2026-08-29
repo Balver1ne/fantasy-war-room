@@ -66,9 +66,12 @@
   .prow:hover { background:var(--panel2); }
   .prow .main { display:flex; align-items:center; gap:8px; }
   .prow .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .prow .sv { font-size:11px; color:var(--fg2); width:36px; text-align:right; }
-  .prow .pw { font-size:11px; color:var(--green); width:40px; text-align:right; }
+  .prow .sv { font-size:11px; color:var(--fg2); width:34px; text-align:right; }
+  .prow .col { font-size:11px; color:var(--fg2); width:34px; text-align:right; }
+  .prow .col.vona { color:var(--green); }
   .prow .team { color:var(--fg3); font-size:11px; }
+  .bhead { display:flex; gap:0; padding:4px 8px 4px 32px; border-bottom:1px solid var(--border); font-size:9px; text-transform:uppercase; letter-spacing:.05em; color:var(--fg3); }
+  .bhead .hnm { flex:1; } .bhead span:not(.hnm) { width:34px; text-align:right; }
   .bdline { font-size:10px; color:var(--fg3); padding-left:26px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .bd b { color:var(--fg2); font-weight:600; }
   .breakdown { font-size:11px; color:var(--fg2); margin-top:8px; display:flex; flex-wrap:wrap; gap:8px; }
@@ -131,6 +134,7 @@
     <h2>Best available</h2>
     <div class="sources-ctrl" id="sourcesCtrl"></div>
     <div class="filters" id="filters"></div>
+    <div class="bhead"><span class="hnm">Player</span><span>VORP</span><span>VONA</span><span>%bk</span></div>
     <div class="scroll" id="board"><div class="empty-note">Enter a draft to load recommendations.</div></div>
   </section>
 
@@ -153,8 +157,8 @@ const POSITIONS = ["ALL","QB","RB","WR","TE","K","DEF"];
 const $ = (id) => document.getElementById(id);
 const esc = (s) => (s ?? "").toString().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const FLEX_POS = ["RB","WR","TE"];
-let S = { draftId:null, mySlot:null, board:[], needs:{}, slots:{}, snap:null, rec:null,
-          roster:[], posFilter:new Set(), sourcesAvail:[], selectedSources:loadSources(),
+let S = { draftId:null, mySlot:null, board:[], cards:[], needs:{}, slots:{}, snap:null, rec:null,
+          roster:[], posFilter:new Set(), sort:"value", sourcesAvail:[], selectedSources:loadSources(),
           profiles:loadProfiles(), queue:loadQueue(), es:null, refreshT:null };
 
 function lsGet(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }
@@ -208,11 +212,12 @@ async function refresh() {
     const slotQ = S.mySlot ? `&my_slot=${S.mySlot}` : "";
     const srcQ = S.selectedSources.size ? `&sources=${[...S.selectedSources].map(encodeURIComponent).join(",")}` : "";
     const [rec, snap, picks] = await Promise.all([
-      api("GET", `/api/drafts/${S.draftId}/recommendations?limit=160${slotQ}${srcQ}`),
+      api("GET", `/api/drafts/${S.draftId}/recommendations?limit=300${slotQ}${srcQ}`),
       api("GET", `/api/drafts/${S.draftId}`),
       api("GET", `/api/drafts/${S.draftId}/picks`),
     ]);
-    S.board = rec.recommendations; S.needs = rec.needs; S.slots = rec.slots || {};
+    S.board = rec.board || []; S.cards = rec.recommendations || [];
+    S.needs = rec.needs; S.slots = rec.slots || {};
     S.rec = rec; S.snap = snap; S.sourcesAvail = rec.sources_available || [];
     S.roster = picks.filter(p => S.mySlot && p.draft_slot === S.mySlot);
     render();
@@ -227,6 +232,7 @@ function activePositions() {
   // empty set == ALL
   return S.posFilter.size ? S.posFilter : null;
 }
+const SORTS = { value:"Value", vorp:"VORP", vona:"VONA", composite:"Draft-now", back:"% back" };
 function renderFilters() {
   const chips = ["QB","RB","WR","TE","K","DEF"].map(p =>
     `<button class="${S.posFilter.has(p)?'on':''}" onclick="togglePos('${p}')">${p}</button>`).join("");
@@ -234,7 +240,18 @@ function renderFilters() {
     `<button class="${S.posFilter.size===0?'on':''}" onclick="setPreset('all')">ALL</button>` +
     `<button onclick="setPreset('flex')">FLEX</button>` +
     `<button onclick="setPreset('needs')">Needs</button>`;
-  $("filters").innerHTML = presets + `<span style="width:8px"></span>` + chips;
+  const sort = `<span style="flex:1"></span><span class="ctrl-lbl">Sort</span>` +
+    `<select id="sortSel" onchange="setSort(this.value)">` +
+    Object.entries(SORTS).map(([k,v]) => `<option value="${k}" ${S.sort===k?'selected':''}>${v}</option>`).join("") +
+    `</select>`;
+  $("filters").innerHTML = presets + `<span style="width:8px"></span>` + chips + sort;
+}
+function setSort(k) { S.sort = k; renderBoard(); }
+function sortedBoard() {
+  const key = S.sort;
+  const val = (p) => key==="vorp" ? p.vorp : key==="vona" ? (p.vona ?? -1e9)
+    : key==="composite" ? p.composite : key==="back" ? -(p.survival ?? 2) : p.value;
+  return [...S.board].sort((a,b) => val(b) - val(a));
 }
 function togglePos(p) { if (S.posFilter.has(p)) S.posFilter.delete(p); else S.posFilter.add(p); renderFilters(); renderBoard(); }
 function setPreset(kind) {
@@ -306,13 +323,16 @@ function bdInline(p) {
 
 function renderBoard() {
   const active = activePositions();
-  const list = S.board.filter(p => !active || active.has(p.position));
+  const list = sortedBoard().filter(p => !active || active.has(p.position));
+  const showTiers = S.sort === "value";
   if (!list.length) { $("board").innerHTML = '<div class="empty-note">No available players.</div>'; return; }
   let html = ""; let lastTier = null;
   for (const p of list) {
-    if (p.tier !== lastTier) { html += `<div class="tierband">${esc(p.position!=='ALL'?p.position:'')} Tier ${p.tier ?? '—'}</div>`; lastTier = p.tier; }
+    if (showTiers && p.tier !== lastTier) {
+      html += `<div class="tierband">${esc(p.position)} Tier ${p.tier ?? '—'}</div>`; lastTier = p.tier;
+    }
     const sv = p.survival!=null ? `${Math.round(p.survival*100)}%` : "";
-    const pw = p.pts_wk!=null ? p.pts_wk : "";
+    const vona = p.vona!=null ? p.vona.toFixed(0) : "";
     const flags = (p.flags||[]).slice(0,2).map(f=>`<span class="flag">${esc(f)}</span>`).join("");
     const star = S.queue.has(p.sleeper_id) ? "on" : "";
     const bd = bdInline(p);
@@ -321,8 +341,9 @@ function renderBoard() {
         <span class="star ${star}" onclick="toggleQ('${p.sleeper_id}')">★</span>
         ${posChip(p.position)}
         <span class="nm">${esc(p.name)} <span class="team">${esc(p.team||'')}</span> ${flags}</span>
-        <span class="pw" title="pts/wk">${pw}</span>
-        <span class="sv" title="% back">${sv}</span>
+        <span class="col" title="VORP (over replacement)">${p.vorp!=null?p.vorp.toFixed(0):''}</span>
+        <span class="col vona" title="VONA (over next available)">${vona}</span>
+        <span class="sv" title="% chance back at your next pick">${sv}</span>
       </div>
       ${bd ? `<div class="bdline">${bd}</div>` : ""}</div>`;
   }
@@ -330,7 +351,7 @@ function renderBoard() {
 }
 
 function renderCards() {
-  const top = S.board.slice(0, 3);
+  const top = S.cards.slice(0, 3);
   const oc = $("onclock");
   if (S.rec && S.rec.picks_until === 0) oc.innerHTML = `<div class="onclock">🟢 You're on the clock — pick ${esc(S.rec.my_next_pick||'')}</div>`;
   else oc.innerHTML = "";
@@ -354,7 +375,7 @@ function renderCards() {
       <div class="rank">#${i+1} · composite ${p.composite}</div>
       <div class="name">${esc(p.name)}</div>
       <div class="meta">${posChip(p.position)} ${esc(p.team||'')} · Tier ${p.tier ?? '—'} ${flags}</div>
-      <div><span class="stat">VOR <b>${p.vor}</b></span>
+      <div><span class="stat">VORP <b>${p.vorp}</b></span>
            <span class="stat">Back <b>${sv}</b></span>${ptswk}
            <button class="ghost tiny" onclick="toggleQ('${p.sleeper_id}')">${S.queue.has(p.sleeper_id)?'★ queued':'☆ queue'}</button></div>
       ${meters ? `<div class="meters">${meters}</div>` : ""}

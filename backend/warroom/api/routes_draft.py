@@ -149,7 +149,8 @@ def get_recommendations(
     sessions: Sessions,
     my_slot: int | None = None,
     scoring: str | None = None,
-    limit: int = 8,
+    limit: int = 300,
+    cards: int = 8,
     sources: str | None = None,
 ) -> dict[str, Any]:
     """Best available picks for the drafting team, from the committed ranking sets +
@@ -180,7 +181,7 @@ def get_recommendations(
 
     league = assemble.build_league_from_draft(draft)
     state = assemble.build_draft_state(db, draft, my_slot=my_slot, my_roster_id=my_roster_id)
-    config = EngineConfig(top_n=max(1, min(limit, 300)))
+    config = EngineConfig(top_n=max(1, min(cards, 20)))
     result = recommend(state, data, Preferences(), league, config)
 
     picks_until = None
@@ -211,15 +212,29 @@ def get_recommendations(
                 bool_flags.append(name)
         return sorted(bool_flags), sorted(ratings, key=lambda r: r["name"])
 
+    def _enrich(sid: str, position: str) -> dict[str, Any]:
+        breakdown, pts_wk = _breakdown(sid, position, data, labels)
+        bool_flags, ratings = _flags_ratings(sid)
+        return {"flags": bool_flags, "ratings": ratings, "pts_wk": pts_wk, "sources": breakdown}
+
+    # Cards: the need-adjusted "draft now" picks, with reasons.
     recs = []
     for r in result.recommendations:
-        breakdown, pts_wk = _breakdown(r.sleeper_id, r.position, data, labels)
-        bool_flags, ratings = _flags_ratings(r.sleeper_id)
         recs.append({
             "sleeper_id": r.sleeper_id, "name": r.name, "position": r.position,
-            "team": r.team, "composite": r.composite_score, "vor": r.base_vor,
-            "tier": r.tier, "survival": r.survival_prob, "flags": bool_flags,
-            "ratings": ratings, "reasons": r.reasons, "pts_wk": pts_wk, "sources": breakdown,
+            "team": r.team, "composite": r.composite_score, "vorp": r.base_vor,
+            "tier": r.tier, "survival": r.survival_prob, "reasons": r.reasons,
+            **_enrich(r.sleeper_id, r.position),
+        })
+
+    # Board: every available player, value-ordered — never pruned by roster need.
+    board = []
+    for b in result.board[:max(1, min(limit, 900))]:
+        board.append({
+            "sleeper_id": b.sleeper_id, "name": b.name, "position": b.position,
+            "team": b.team, "value": b.value, "vorp": b.vorp, "vona": b.vona,
+            "composite": b.composite, "tier": b.tier, "survival": b.survival_prob,
+            **_enrich(b.sleeper_id, b.position),
         })
 
     return {
@@ -235,6 +250,7 @@ def get_recommendations(
         "sources_available": [{"source": s, "label": labels[s]} for s in all_sources],
         "compute_ms": round(result.compute_ms, 1),
         "recommendations": recs,
+        "board": board,
     }
 
 

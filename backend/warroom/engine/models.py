@@ -100,7 +100,25 @@ class Recommendation:
 
 
 @dataclass
+class BoardEntry:
+    """A player on the value board — never removed as your roster fills, so filling a
+    position doesn't hide its remaining players."""
+
+    sleeper_id: str
+    name: str
+    position: str
+    team: str | None
+    value: float                         # 0–100 blended consensus value
+    vorp: float                          # Value Over Replacement Player (VOR)
+    vona: float | None                   # Value Over Next Available at his position
+    composite: float                     # need-adjusted "draft now" score
+    tier: int | None
+    survival_prob: float | None
+
+
+@dataclass
 class RecommendationResult:
-    recommendations: list[Recommendation]
-    needs: dict[str, int]                # position -> starter slots still unfilled
+    recommendations: list[Recommendation]   # top-N by composite, with reasons (the cards)
+    board: list[BoardEntry]                 # all available, value-ordered (the left list)
+    needs: dict[str, int]                   # position -> starter slots still unfilled
     compute_ms: float = 0.0

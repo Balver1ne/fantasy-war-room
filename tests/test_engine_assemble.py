@@ -118,7 +118,12 @@ async def test_recommendations_board_fields(api):
     b = r.json()
     assert b["slots"]["RB"] == 2 and b["slots"]["FLEX"] == 1
     assert "picks_until" in b and "my_next_pick_no" in b and "pick_timer" in b
-    assert len(b["recommendations"]) <= 50
+    assert b["board"], "value-ordered board returned"
+    be = b["board"][0]
+    assert "value" in be and "vorp" in be and "vona" in be
+    # board is value-ordered
+    vals = [e["value"] for e in b["board"]]
+    assert vals == sorted(vals, reverse=True)
 
 
 async def test_recommendations_source_breakdown(api):
