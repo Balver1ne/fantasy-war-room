@@ -67,6 +67,29 @@ def test_build_ranking_data_from_db(session_factory):
     assert data.flag_priority["sleeper"] == 10
 
 
+def test_adp_two_tier_imported_then_search_rank(session_factory):
+    with session_factory() as s:
+        s.add(Player(sleeper_id="a", name="A", name_normalized="a", position="RB",
+                     team="X", metadata_json={"search_rank": 18}))
+        s.add(Player(sleeper_id="b", name="B", name_normalized="b", position="WR",
+                     team="X", metadata_json={"search_rank": 9999999}))  # sentinel
+        s.add(Player(sleeper_id="c", name="C", name_normalized="c", position="RB",
+                     team="X", metadata_json={"search_rank": 50}))
+        rset = RankingSet(source="FP", kind="rankings", scoring_format="half_ppr",
+                          active=True, row_count=3)
+        s.add(rset)
+        s.flush()
+        s.add(Ranking(ranking_set_id=rset.id, sleeper_id="a", rank=1))            # no ADP
+        s.add(Ranking(ranking_set_id=rset.id, sleeper_id="b", rank=2))            # sentinel
+        s.add(Ranking(ranking_set_id=rset.id, sleeper_id="c", rank=3, adp=99.0))  # imported
+        s.commit()
+    with session_factory() as s:
+        data = assemble.build_ranking_data(s, "half_ppr")
+    assert data.adp["a"] == 18.0     # proxy from search_rank
+    assert "b" not in data.adp       # 9999999 sentinel filtered out
+    assert data.adp["c"] == 99.0     # imported ADP overrides the search_rank proxy
+
+
 def test_build_league_from_draft_slots(session_factory):
     seed(session_factory)
     with session_factory() as s:
