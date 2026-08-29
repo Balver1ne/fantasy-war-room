@@ -48,8 +48,18 @@
   .scroll { overflow-y:auto; padding:6px; flex:1; }
 
   .filters { display:flex; gap:4px; padding:8px 10px; flex-wrap:wrap; border-bottom:1px solid var(--border); }
-  .filters button { background:#0c1116; border:1px solid var(--border2); color:var(--fg2); padding:3px 9px; border-radius:20px; font-size:11px; }
+  .filters button { background:#0c1116; border:1px solid var(--border2); color:var(--fg2); padding:3px 9px; border-radius:20px; font-size:11px; cursor:pointer; }
   .filters button.on { background:var(--accent2); color:#fff; border-color:var(--accent2); }
+  .sources-ctrl { display:flex; align-items:center; gap:5px; flex-wrap:wrap; padding:8px 10px; border-bottom:1px solid var(--border); }
+  .ctrl-lbl { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--fg3); }
+  .src-chip { background:#0c1116; border:1px solid var(--border2); color:var(--fg3); padding:2px 8px; border-radius:5px; font-size:11px; cursor:pointer; }
+  .src-chip.on { background:#132033; color:#cfe3ff; border-color:#2f4a6d; }
+  .sources-ctrl select { height:26px; padding:2px 6px; font-size:11px; }
+  .meters { display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; }
+  .meter { font-size:10px; color:var(--fg2); }
+  .meter .pips { letter-spacing:1px; }
+  .meter .pips .on { color:var(--amber); } .meter .pips .off { color:var(--border2); }
+  .meter.bust .pips .on { color:var(--red); }
 
   .tierband { font-size:10px; color:var(--fg3); text-transform:uppercase; letter-spacing:.08em; margin:8px 6px 3px; border-top:1px dashed var(--border2); padding-top:5px; }
   .prow { display:flex; flex-direction:column; gap:2px; padding:5px 6px; border-radius:6px; }
@@ -119,6 +129,7 @@
 <main>
   <section class="col">
     <h2>Best available</h2>
+    <div class="sources-ctrl" id="sourcesCtrl"></div>
     <div class="filters" id="filters"></div>
     <div class="scroll" id="board"><div class="empty-note">Enter a draft to load recommendations.</div></div>
   </section>
@@ -141,11 +152,19 @@
 const POSITIONS = ["ALL","QB","RB","WR","TE","K","DEF"];
 const $ = (id) => document.getElementById(id);
 const esc = (s) => (s ?? "").toString().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let S = { draftId:null, mySlot:null, board:[], needs:{}, slots:{}, snap:null,
-          roster:[], filter:"ALL", queue:loadQueue(), es:null, refreshT:null, clock:null };
+const FLEX_POS = ["RB","WR","TE"];
+let S = { draftId:null, mySlot:null, board:[], needs:{}, slots:{}, snap:null, rec:null,
+          roster:[], posFilter:new Set(), sourcesAvail:[], selectedSources:loadSources(),
+          profiles:loadProfiles(), queue:loadQueue(), es:null, refreshT:null };
 
-function loadQueue() { try { return new Set(JSON.parse(localStorage.getItem("wr_queue")||"[]")); } catch { return new Set(); } }
-function saveQueue() { try { localStorage.setItem("wr_queue", JSON.stringify([...S.queue])); } catch {} }
+function lsGet(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+function loadQueue() { return new Set(lsGet("wr_queue", [])); }
+function saveQueue() { lsSet("wr_queue", [...S.queue]); }
+function loadSources() { return new Set(lsGet("wr_sources", [])); }
+function saveSources() { lsSet("wr_sources", [...S.selectedSources]); }
+function loadProfiles() { return lsGet("wr_profiles", {}); }
+function saveProfiles() { lsSet("wr_profiles", S.profiles); }
 
 async function api(method, url) {
   const r = await fetch(url, { method });
@@ -187,13 +206,14 @@ async function refresh() {
   if (!S.draftId) return;
   try {
     const slotQ = S.mySlot ? `&my_slot=${S.mySlot}` : "";
+    const srcQ = S.selectedSources.size ? `&sources=${[...S.selectedSources].map(encodeURIComponent).join(",")}` : "";
     const [rec, snap, picks] = await Promise.all([
-      api("GET", `/api/drafts/${S.draftId}/recommendations?limit=160${slotQ}`),
+      api("GET", `/api/drafts/${S.draftId}/recommendations?limit=160${slotQ}${srcQ}`),
       api("GET", `/api/drafts/${S.draftId}`),
       api("GET", `/api/drafts/${S.draftId}/picks`),
     ]);
     S.board = rec.recommendations; S.needs = rec.needs; S.slots = rec.slots || {};
-    S.rec = rec; S.snap = snap;
+    S.rec = rec; S.snap = snap; S.sourcesAvail = rec.sources_available || [];
     S.roster = picks.filter(p => S.mySlot && p.draft_slot === S.mySlot);
     render();
   } catch (e) {
@@ -201,13 +221,62 @@ async function refresh() {
   }
 }
 
-function render() { renderFilters(); renderTicker(); renderClock(); renderBoard(); renderCards(); renderRoster(); renderNeeds(); renderQueue(); }
+function render() { renderSources(); renderFilters(); renderTicker(); renderClock(); renderBoard(); renderCards(); renderRoster(); renderNeeds(); renderQueue(); }
 
-function renderFilters() {
-  $("filters").innerHTML = POSITIONS.map(p =>
-    `<button class="${S.filter===p?'on':''}" onclick="setFilter('${p}')">${p}</button>`).join("");
+function activePositions() {
+  // empty set == ALL
+  return S.posFilter.size ? S.posFilter : null;
 }
-function setFilter(p) { S.filter = p; renderFilters(); renderBoard(); }
+function renderFilters() {
+  const chips = ["QB","RB","WR","TE","K","DEF"].map(p =>
+    `<button class="${S.posFilter.has(p)?'on':''}" onclick="togglePos('${p}')">${p}</button>`).join("");
+  const presets =
+    `<button class="${S.posFilter.size===0?'on':''}" onclick="setPreset('all')">ALL</button>` +
+    `<button onclick="setPreset('flex')">FLEX</button>` +
+    `<button onclick="setPreset('needs')">Needs</button>`;
+  $("filters").innerHTML = presets + `<span style="width:8px"></span>` + chips;
+}
+function togglePos(p) { if (S.posFilter.has(p)) S.posFilter.delete(p); else S.posFilter.add(p); renderFilters(); renderBoard(); }
+function setPreset(kind) {
+  S.posFilter = new Set();
+  if (kind === "flex") FLEX_POS.forEach(p => S.posFilter.add(p));
+  else if (kind === "needs") Object.keys(S.needs||{}).forEach(p => { if (p!=="FLEX") S.posFilter.add(p); });
+  renderFilters(); renderBoard();
+}
+
+function renderSources() {
+  const el = $("sourcesCtrl"); if (!el) return;
+  if (!S.sourcesAvail.length) { el.innerHTML = ""; return; }
+  const chips = S.sourcesAvail.map(s => {
+    const on = S.selectedSources.size===0 || S.selectedSources.has(s.source);
+    return `<button class="src-chip ${on?'on':''}" title="${esc(s.source)}" onclick="toggleSource('${esc(s.source)}')">${esc(s.label)}</button>`;
+  }).join("");
+  const names = Object.keys(S.profiles);
+  const profOpts = ['<option value="">Profiles…</option>']
+    .concat(names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`)).join("");
+  el.innerHTML = `<span class="ctrl-lbl">Rank by</span>
+    <button class="src-chip ${S.selectedSources.size===0?'on':''}" onclick="allSources()">All</button>
+    ${chips}
+    <span style="flex:1"></span>
+    <select id="profSel" onchange="loadProfile(this.value)">${profOpts}</select>
+    <button class="ghost tiny" onclick="saveProfile()">Save</button>`;
+}
+function toggleSource(name) {
+  // materialize "all" into an explicit set before toggling off one
+  if (S.selectedSources.size===0) S.sourcesAvail.forEach(s => S.selectedSources.add(s.source));
+  if (S.selectedSources.has(name)) S.selectedSources.delete(name); else S.selectedSources.add(name);
+  if (S.selectedSources.size === S.sourcesAvail.length) S.selectedSources.clear(); // back to ALL
+  saveSources(); refresh();
+}
+function allSources() { S.selectedSources.clear(); saveSources(); refresh(); }
+function saveProfile() {
+  const name = prompt("Save current sources as profile:"); if (!name) return;
+  S.profiles[name] = [...S.selectedSources]; saveProfiles(); renderSources();
+}
+function loadProfile(name) {
+  if (!name || !S.profiles[name]) return;
+  S.selectedSources = new Set(S.profiles[name]); saveSources(); refresh();
+}
 
 function posChip(p) { return `<span class="pos ${esc(p)}">${esc(p)}</span>`; }
 
@@ -236,7 +305,8 @@ function bdInline(p) {
 }
 
 function renderBoard() {
-  const list = S.board.filter(p => S.filter==="ALL" || p.position===S.filter);
+  const active = activePositions();
+  const list = S.board.filter(p => !active || active.has(p.position));
   if (!list.length) { $("board").innerHTML = '<div class="empty-note">No available players.</div>'; return; }
   let html = ""; let lastTier = null;
   for (const p of list) {
@@ -274,6 +344,12 @@ function renderCards() {
       return `<span class="src">${esc(s.label)} <b>${esc(s.pos||'')}</b>${proj}</span>`;
     }).join("");
     const ptswk = p.pts_wk!=null ? `<span class="stat">Pts/wk <b>${p.pts_wk}</b></span>` : "";
+    const meters = (p.ratings||[]).map(rt => {
+      const n = Math.round(rt.value), mx = rt.max || 5;
+      const pips = Array.from({length:mx}, (_,k) => k<n ? '<span class="on">●</span>' : '<span class="off">●</span>').join("");
+      const bust = /bust/i.test(rt.name) ? " bust" : "";
+      return `<span class="meter${bust}">${esc(rt.name)} <span class="pips">${pips}</span></span>`;
+    }).join("");
     return `<div class="card ${i===0?'top':''}">
       <div class="rank">#${i+1} · composite ${p.composite}</div>
       <div class="name">${esc(p.name)}</div>
@@ -281,6 +357,7 @@ function renderCards() {
       <div><span class="stat">VOR <b>${p.vor}</b></span>
            <span class="stat">Back <b>${sv}</b></span>${ptswk}
            <button class="ghost tiny" onclick="toggleQ('${p.sleeper_id}')">${S.queue.has(p.sleeper_id)?'★ queued':'☆ queue'}</button></div>
+      ${meters ? `<div class="meters">${meters}</div>` : ""}
       ${bd ? `<div class="breakdown">${bd}</div>` : ""}
       <ul class="reasons">${reasons}</ul></div>`;
   }).join("");
