@@ -31,6 +31,7 @@ class RankingData:
     adp: dict[str, float] = field(default_factory=dict)              # sleeper_id -> ADP
     flags: dict[str, dict[str, float | bool]] = field(default_factory=dict)
     flag_priority: dict[str, int] = field(default_factory=dict)      # flag_name -> priority
+    flag_kinds: dict[str, str] = field(default_factory=dict)         # flag_name -> kind
 
 
 @dataclass
@@ -80,6 +81,9 @@ class EngineConfig:
     need_fill_decay: float = 0.55        # multiplier per starter filled beyond need
     hard_cap_positions: tuple[str, ...] = ("K", "DEF")
     over_cap_penalty: float = 1000.0     # pushes over-rostered positions below any real option
+    # Don't recommend a kicker/defense before this round — they're late-draft picks.
+    kdef_earliest_round: int = 12
+    kdef_positions: tuple[str, ...] = ("K", "DEF")
     my_guy_tier_value: float = 8.0       # value points per tier of My-Guys boost
     cliff_boost: float = 0.2             # urgency bump when a player ends a tier at a cliff
 
@@ -99,7 +103,25 @@ class Recommendation:
 
 
 @dataclass
+class BoardEntry:
+    """A player on the value board — never removed as your roster fills, so filling a
+    position doesn't hide its remaining players."""
+
+    sleeper_id: str
+    name: str
+    position: str
+    team: str | None
+    value: float                         # 0–100 blended consensus value
+    vorp: float                          # Value Over Replacement Player (VOR)
+    vona: float | None                   # Value Over Next Available at his position
+    composite: float                     # need-adjusted "draft now" score
+    tier: int | None
+    survival_prob: float | None
+
+
+@dataclass
 class RecommendationResult:
-    recommendations: list[Recommendation]
-    needs: dict[str, int]                # position -> starter slots still unfilled
+    recommendations: list[Recommendation]   # top-N by composite, with reasons (the cards)
+    board: list[BoardEntry]                 # all available, value-ordered (the left list)
+    needs: dict[str, int]                   # position -> starter slots still unfilled
     compute_ms: float = 0.0

@@ -67,6 +67,29 @@ def test_build_ranking_data_from_db(session_factory):
     assert data.flag_priority["sleeper"] == 10
 
 
+def test_adp_two_tier_imported_then_search_rank(session_factory):
+    with session_factory() as s:
+        s.add(Player(sleeper_id="a", name="A", name_normalized="a", position="RB",
+                     team="X", metadata_json={"search_rank": 18}))
+        s.add(Player(sleeper_id="b", name="B", name_normalized="b", position="WR",
+                     team="X", metadata_json={"search_rank": 9999999}))  # sentinel
+        s.add(Player(sleeper_id="c", name="C", name_normalized="c", position="RB",
+                     team="X", metadata_json={"search_rank": 50}))
+        rset = RankingSet(source="FP", kind="rankings", scoring_format="half_ppr",
+                          active=True, row_count=3)
+        s.add(rset)
+        s.flush()
+        s.add(Ranking(ranking_set_id=rset.id, sleeper_id="a", rank=1))            # no ADP
+        s.add(Ranking(ranking_set_id=rset.id, sleeper_id="b", rank=2))            # sentinel
+        s.add(Ranking(ranking_set_id=rset.id, sleeper_id="c", rank=3, adp=99.0))  # imported
+        s.commit()
+    with session_factory() as s:
+        data = assemble.build_ranking_data(s, "half_ppr")
+    assert data.adp["a"] == 18.0     # proxy from search_rank
+    assert "b" not in data.adp       # 9999999 sentinel filtered out
+    assert data.adp["c"] == 99.0     # imported ADP overrides the search_rank proxy
+
+
 def test_build_league_from_draft_slots(session_factory):
     seed(session_factory)
     with session_factory() as s:
@@ -111,6 +134,35 @@ async def test_recommendations_endpoint(api):
     assert top["sleeper_id"] not in ("1", "2")
     assert "reasons" in top and isinstance(top["reasons"], list)
     assert body["needs"]["RB"] >= 1
+
+
+async def test_recommendations_board_fields(api):
+    r = await api.get("/api/drafts/D1/recommendations?my_slot=3&limit=50")
+    b = r.json()
+    assert b["slots"]["RB"] == 2 and b["slots"]["FLEX"] == 1
+    assert "picks_until" in b and "my_next_pick_no" in b and "pick_timer" in b
+    assert b["board"], "value-ordered board returned"
+    be = b["board"][0]
+    assert "value" in be and "vorp" in be and "vona" in be
+    # board is value-ordered
+    vals = [e["value"] for e in b["board"]]
+    assert vals == sorted(vals, reverse=True)
+
+
+async def test_recommendations_source_breakdown(api):
+    r = await api.get("/api/drafts/D1/recommendations?my_slot=3&limit=50")
+    b = r.json()
+    assert "source_labels" in b and "FantasyPros" in b["source_labels"]
+    rec = b["recommendations"][0]
+    assert "sources" in rec and rec["sources"]
+    src = rec["sources"][0]
+    assert "label" in src and "overall" in src   # seeded board has overall ranks
+    assert "pts_wk" in rec                         # present (None here — no projection seeded)
+
+
+async def test_board_page_served(api):
+    r = await api.get("/board")
+    assert r.status_code == 200 and "WAR ROOM" in r.text
 
 
 async def test_recommendations_requires_rankings(settings, session_factory):

@@ -73,7 +73,14 @@ class TestParseAndMap:
         assert parse_flag("flag:rb_confidence:numeric") == ("rb_confidence", "numeric")
         assert parse_flag("flag:red_zone") == ("red_zone", "numeric")
         assert parse_flag("flag:has_it:bool") == ("has_it", "bool")
+        assert parse_flag("flag:upside:rating") == ("upside", "rating")
         assert parse_flag("rank") is None
+
+    def test_auto_map_rating_columns(self):
+        m = auto_map(["PLAYER NAME", "POS", "UPSIDE", "BUST", "SOS SEASON"])
+        assert m["UPSIDE"] == "flag:upside:rating"
+        assert m["BUST"] == "flag:bust:rating"
+        assert m["SOS SEASON"] == "flag:sos_season:rating"
 
 
 class TestImportFlow:
@@ -152,6 +159,28 @@ class TestImportFlow:
                        and a.sleeper_id == "1001" for a in aliases)
             # and repo.load_aliases exposes it for the next import
             assert repo.load_aliases(s)[normalize_name("Totally Unknown Rookie")] == "1001"
+
+    def test_rating_column_lands_as_rating_flag(self, db):
+        with db() as s:
+            headers = ["name", "position", "team", "upside"]
+            rows = [
+                {"name": "Christian McCaffrey", "position": "RB", "team": "SF",
+                 "upside": "5 out of 5 stars"},
+                {"name": "Bijan Robinson", "position": "RB", "team": "ATL",
+                 "upside": "3 out of 5"},
+            ]
+            job = service.create_job(s, source="FP", headers=headers, rows=rows,
+                                     scoring_format="half_ppr")
+            assert job.mappings["upside"] == "flag:upside:rating"
+            service.run_matching(s, job)
+            for r in service.unresolved_rows(job):
+                service.skip_row(s, job, r["row_index"])
+            service.commit(s, job)
+            s.commit()
+        with db() as s:
+            assert s.get(FlagType, "upside").value_kind == "rating"
+            vals = {f.sleeper_id: f.value_num for f in s.scalars(select(PlayerFlag))}
+            assert vals["1001"] == 5.0 and vals["1005"] == 3.0
 
     def test_reimport_deactivates_prior_set(self, db):
         with db() as s:

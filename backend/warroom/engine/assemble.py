@@ -25,6 +25,9 @@ from warroom.engine.models import (
 )
 from warroom.sync import snake
 
+# Sleeper marks irrelevant players with this search_rank; treat as "no ADP".
+_SEARCH_RANK_SENTINEL = 9_000_000
+
 # Sleeper draft settings slot keys → engine starter positions.
 _SLOT_KEYS = {
     "QB": "slots_qb", "RB": "slots_rb", "WR": "slots_wr",
@@ -40,6 +43,7 @@ def build_ranking_data(session: Session, scoring_format: str | None = None) -> R
     )
     if scoring_format:
         sets = [s for s in sets if s.kind == "adp" or s.scoring_format == scoring_format]
+    match_ids = {rs.id for rs in sets}  # flags are scoped to these sets too
 
     sources: dict[str, dict[str, RankRow]] = {}
     weights: dict[str, float] = {}
@@ -63,24 +67,37 @@ def build_ranking_data(session: Session, scoring_format: str | None = None) -> R
 
     flags: dict[str, dict[str, float | bool]] = {}
     for pf in session.scalars(select(PlayerFlag)):
+        # keep flags in scope: from a matching-format set, or manual (no set)
+        if pf.ranking_set_id is not None and pf.ranking_set_id not in match_ids:
+            continue
         value: float | bool | None = pf.value_bool if pf.value_bool is not None else pf.value_num
         if value is None:
             continue
         flags.setdefault(pf.sleeper_id, {})[pf.flag_name] = value
         referenced.add(pf.sleeper_id)
 
-    flag_priority = {
-        ft.flag_name: ft.tiebreak_priority for ft in session.scalars(select(FlagType))
-    }
+    flag_priority: dict[str, int] = {}
+    flag_kinds: dict[str, str] = {}
+    for ft in session.scalars(select(FlagType)):
+        flag_priority[ft.flag_name] = ft.tiebreak_priority
+        flag_kinds[ft.flag_name] = ft.value_kind
 
     players: dict[str, PlayerMeta] = {}
     if referenced:
         for p in session.scalars(select(Player).where(Player.sleeper_id.in_(referenced))):
             players[p.sleeper_id] = PlayerMeta(p.sleeper_id, p.name, p.position or "?", p.team)
+            # Two-tier ADP: imported ADP wins; otherwise fall back to Sleeper's live
+            # `search_rank` (a popularity/ADP-like ordering synced daily), skipping the
+            # 9999999 "irrelevant" sentinel. Keeps survival probability working with no
+            # ADP import.
+            if p.sleeper_id not in adp:
+                sr = (p.metadata_json or {}).get("search_rank")
+                if isinstance(sr, (int, float)) and 0 < sr < _SEARCH_RANK_SENTINEL:
+                    adp[p.sleeper_id] = float(sr)
 
     return RankingData(
         players=players, sources=sources, weights=weights,
-        adp=adp, flags=flags, flag_priority=flag_priority,
+        adp=adp, flags=flags, flag_priority=flag_priority, flag_kinds=flag_kinds,
     )
 
 

@@ -23,10 +23,13 @@ def blend_values(data: RankingData, config: EngineConfig) -> dict[str, float]:
         if projs:
             proj_max[source] = max(projs)
 
-    blended: dict[str, float] = {}
+    hl = config.value_half_life
+    # Pass 1: contributions from sources that give an overall rank or a projection.
+    # Position-only contributions are deferred — they need the consensus to anchor to.
+    num: dict[str, float] = {}
+    den: dict[str, float] = {}
+    deferred: list[tuple[str, float, int]] = []  # (sid, weight, position_rank)
     for sid in data.players:
-        num = 0.0
-        den = 0.0
         for source, rows in data.sources.items():
             row = rows.get(sid)
             if row is None:
@@ -35,14 +38,38 @@ def blend_values(data: RankingData, config: EngineConfig) -> dict[str, float]:
             if row.projection is not None and proj_max.get(source):
                 value = 100.0 * row.projection / proj_max[source]
             elif row.rank is not None:
-                value = value_from_rank(row.rank, config.value_half_life)
+                value = value_from_rank(row.rank, hl)
+            elif row.position_rank is not None:
+                deferred.append((sid, weight, row.position_rank))
+                continue
             else:
                 continue
-            num += weight * value
-            den += weight
-        if den > 0:
-            blended[sid] = num / den
-    return blended
+            num[sid] = num.get(sid, 0.0) + weight * value
+            den[sid] = den.get(sid, 0.0) + weight
+
+    # Anchor position-only sources: a source's "RB5" is worth what the 5th-best RB is
+    # worth on the consensus board so far. Keeps every source on one 0–100 scale, and is
+    # a no-op when no source is position-only (Pass 1 already holds the full blend).
+    if deferred:
+        prelim = {sid: num[sid] / den[sid] for sid in den}
+        by_pos: dict[str, list[float]] = {}
+        for sid, value in prelim.items():
+            meta = data.players.get(sid)
+            if meta:
+                by_pos.setdefault(meta.position, []).append(value)
+        for vals in by_pos.values():
+            vals.sort(reverse=True)
+        for sid, weight, prk in deferred:
+            meta = data.players.get(sid)
+            vals = by_pos.get(meta.position, []) if meta else []
+            if vals:
+                value = vals[min(prk, len(vals)) - 1]
+            else:  # position has no rank-based consensus — fall back to the raw curve
+                value = value_from_rank(prk, hl)
+            num[sid] = num.get(sid, 0.0) + weight * value
+            den[sid] = den.get(sid, 0.0) + weight
+
+    return {sid: num[sid] / den[sid] for sid in den if den[sid] > 0}
 
 
 def consensus_rank(blended: dict[str, float]) -> dict[str, int]:

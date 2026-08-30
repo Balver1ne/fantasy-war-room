@@ -10,6 +10,7 @@ from time import perf_counter
 from warroom.engine import adjustments, consensus, reasons, survival, tiebreak, vbd
 from warroom.engine.models import (
     FLEX_POSITIONS,
+    BoardEntry,
     DraftState,
     EngineConfig,
     LeagueSettings,
@@ -67,6 +68,20 @@ def recommend(
     my_counts = adjustments.count_positions(draft_state.my_roster, pos_of)
     needs = _needs(my_counts, league)
 
+    current_round = (
+        (draft_state.current_pick_no - 1) // league.team_count + 1
+        if league.team_count else 1
+    )
+    kdef_locked = current_round < config.kdef_earliest_round
+
+    # Positions that can actually start (or fill FLEX/SUPERFLEX). Anything else — e.g. a
+    # fullback with no roster slot — is never a recommendation.
+    startable = {p for p, c in league.starters.items() if c > 0}
+    if league.flex:
+        startable |= set(FLEX_POSITIONS)
+    if league.superflex:
+        startable.add("QB")
+
     scored: list[tiebreak.Scored] = []
     info_by_sid: dict[str, dict] = {}
     for sid in available:
@@ -86,6 +101,12 @@ def recommend(
         # player, even a below-replacement one — never surface a pointless extra QB/K/DEF.
         if need_mult <= 0.021:
             composite -= config.over_cap_penalty
+        # Never recommend a kicker/defense before their round — they're late-draft picks.
+        if kdef_locked and pos in config.kdef_positions:
+            composite -= config.over_cap_penalty
+        # Never recommend a position that can't start (e.g. fullback — no roster slot).
+        if pos not in startable:
+            composite -= config.over_cap_penalty
         scored.append(tiebreak.Scored(sid, composite, surv))
         info_by_sid[sid] = {
             "base": base, "pos": pos, "tier": tiers.get(sid), "drop": drop, "survival": surv,
@@ -93,6 +114,40 @@ def recommend(
 
     order = tiebreak.order_with_tiebreaks(scored, data, config)
     comp_by_sid = {s.sleeper_id: s.composite for s in scored}
+
+    # VONA: value over the next available player at the same position (the drop-off).
+    vona: dict[str, float] = {}
+    by_pos: dict[str, list[str]] = {}
+    for sid in available:
+        by_pos.setdefault(data.players[sid].position, []).append(sid)
+    for pos, sids in by_pos.items():
+        sids.sort(key=lambda s: blended.get(s, 0.0), reverse=True)
+        floor = baselines.get(pos, 0.0)
+        for i, sid in enumerate(sids):
+            nxt = blended.get(sids[i + 1], floor) if i + 1 < len(sids) else floor
+            vona[sid] = blended.get(sid, 0.0) - nxt
+
+    # The value board: every available player, ordered by consensus value (never pruned
+    # by roster need — filling a slot must not remove options).
+    board = [
+        BoardEntry(
+            sleeper_id=sid,
+            name=data.players[sid].name,
+            position=data.players[sid].position,
+            team=data.players[sid].team,
+            value=round(blended.get(sid, 0.0), 2),
+            vorp=round(vor.get(sid, 0.0), 2),
+            vona=round(vona[sid], 2) if sid in vona else None,
+            composite=round(comp_by_sid.get(sid, 0.0), 2),
+            tier=tiers.get(sid),
+            survival_prob=(
+                round(info_by_sid[sid]["survival"], 3)
+                if info_by_sid[sid]["survival"] is not None else None
+            ),
+        )
+        for sid in available
+    ]
+    board.sort(key=lambda b: b.value, reverse=True)
 
     recs: list[Recommendation] = []
     for sid in order[: config.top_n]:
@@ -118,5 +173,6 @@ def recommend(
         )
 
     return RecommendationResult(
-        recommendations=recs, needs=needs, compute_ms=(perf_counter() - t0) * 1000.0
+        recommendations=recs, board=board, needs=needs,
+        compute_ms=(perf_counter() - t0) * 1000.0
     )

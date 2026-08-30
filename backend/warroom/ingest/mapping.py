@@ -15,7 +15,7 @@ FIELD_KEYWORDS: dict[str, list[str]] = {
     "rank": ["rk", "rank", "ecr", "overall"],
     "tier": ["tier", "tiers"],
     "position_rank": ["pos rank", "position rank", "posrk"],
-    "projection": ["proj", "projection", "fpts", "points"],
+    "projection": ["proj", "projection", "fpts", "points", "pts/wk", "pts wk", "ppg", "pts"],
     "adp": ["adp", "avg pick", "average draft"],
     "bye": ["bye"],
     "notes": ["notes", "note", "comment"],
@@ -50,6 +50,13 @@ def auto_map(headers: list[str]) -> dict[str, str]:
             continue
         mapping[header] = field
         used.add(field)
+    # Suggest a rating for unmapped star / 1-of-5 columns (FantasyPros upside/bust/SoS).
+    for header in headers:
+        if header in mapping:
+            continue
+        hn = _norm_header(header)
+        if any(kw in hn for kw in RATING_KEYWORDS):
+            mapping[header] = f"flag:{_flag_name(header)}:rating"
     return mapping
 
 
@@ -59,10 +66,19 @@ def flag_target(value: str) -> str | None:
     return spec[0] if spec else None
 
 
+# Header keywords that imply a 1–5 style rating (FantasyPros upside/bust/SoS, etc.).
+RATING_KEYWORDS = ["upside", "bust", "sos", "boom", "floor", "ceiling", "confidence"]
+
+
+def _flag_name(header: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", _norm_header(header)).strip("_")
+
+
 def parse_flag(value: str) -> tuple[str, str] | None:
     """Parse a flag mapping value into (flag_name, value_kind).
 
     ``flag:rb_confidence:numeric`` -> ("rb_confidence", "numeric");
+    ``flag:upside:rating`` -> ("upside", "rating");
     ``flag:red_zone`` -> ("red_zone", "numeric") (kind defaults to numeric).
     """
     if not value.startswith("flag:"):
@@ -70,7 +86,7 @@ def parse_flag(value: str) -> tuple[str, str] | None:
     parts = value.split(":")
     name = parts[1].strip()
     kind = parts[2].strip().lower() if len(parts) > 2 and parts[2].strip() else "numeric"
-    if kind not in ("bool", "numeric"):
+    if kind not in ("bool", "numeric", "rating"):
         kind = "numeric"
     return (name, kind) if name else None
 
