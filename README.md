@@ -45,9 +45,13 @@ Tests: `pytest`
 |---|---|---|
 | 1 | Repo + Sleeper plumbing (live pick polling, SSE, resume-safe state) | complete — tag `2026.1` |
 | 2 | Ingestion + player matching (CSV/PDF import, matching, flags) | complete — tag `2026.2` |
-| 3 | Recommendation engine (VBD, tiers, survival, flag tiebreaker, reasons) | built; awaiting review |
-| 4 | Draft Room UI | — |
-| 5 | Multi-league + polish | — |
+| 3 | Recommendation engine (VBD, tiers, survival, flag tiebreaker, reasons) | complete — tag `2026.3` |
+| 4 | Draft Room UI (live board, cards, roster, queue, VORP/VONA, filters) | complete — tag `2026.4` |
+| 5 | Multi-league + polish | in progress (board polish done; multi-league/settings ahead) |
+
+Phase 4 also carries substantial Phase-5 board work: positional value model, VORP/VONA,
+ranking-source profiles, rating meters, K/DEF round gate, live ADP proxy, per-draft
+scoring-format selector, resizable columns.
 
 ### Phase 1 acceptance run — PASSED 2026-07-05
 
