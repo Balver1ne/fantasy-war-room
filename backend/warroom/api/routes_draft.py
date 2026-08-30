@@ -164,11 +164,13 @@ def get_recommendations(
         my_slot = session.my_slot
     my_roster_id = session.my_roster_id if session is not None else None
 
-    data = assemble.build_ranking_data(db, scoring or (draft.settings or {}).get("scoring_type"))
-    if not data.players:
+    scoring_format = scoring or (draft.settings or {}).get("scoring_type")
+    data = assemble.build_ranking_data(db, scoring_format)
+    if not data.sources:  # no ranking sets drive the board for this format
+        fmt = f" tagged {scoring_format}" if scoring_format else ""
         raise HTTPException(
             status_code=400,
-            detail="No active ranking sets — import rankings on /import first.",
+            detail=f"No ranking sets{fmt} — import rankings on /import first.",
         )
 
     all_sources = list(data.sources.keys())

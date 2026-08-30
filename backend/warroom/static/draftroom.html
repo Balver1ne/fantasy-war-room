@@ -162,8 +162,9 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => (s ?? "").toString().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const FLEX_POS = ["RB","WR","TE"];
 let S = { draftId:null, mySlot:null, board:[], cards:[], needs:{}, slots:{}, snap:null, rec:null,
-          roster:[], posFilter:new Set(), sort:"value", sourcesAvail:[], selectedSources:loadSources(),
+          roster:[], posFilter:new Set(), sort:"value", scoring:"", sourcesAvail:[], selectedSources:loadSources(),
           profiles:loadProfiles(), queue:loadQueue(), es:null, refreshT:null };
+const SCORINGS = { "":"All formats", standard:"Standard", half_ppr:"Half-PPR", ppr:"Full PPR" };
 
 function lsGet(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
@@ -185,6 +186,7 @@ async function enter() {
   const id = $("draftId").value.trim(); const slot = parseInt($("mySlot").value, 10);
   if (!id) return alert("Enter a Sleeper draft id");
   S.draftId = id; S.mySlot = Number.isFinite(slot) ? slot : null;
+  try { S.scoring = localStorage.getItem("wr_scoring_" + id) || ""; } catch { S.scoring = ""; }
   try {
     await fetch(`/api/drafts/${encodeURIComponent(id)}/session`, {
       method:"POST", headers:{ "content-type":"application/json" },
@@ -215,8 +217,9 @@ async function refresh() {
   try {
     const slotQ = S.mySlot ? `&my_slot=${S.mySlot}` : "";
     const srcQ = S.selectedSources.size ? `&sources=${[...S.selectedSources].map(encodeURIComponent).join(",")}` : "";
+    const scoreQ = S.scoring ? `&scoring=${encodeURIComponent(S.scoring)}` : "";
     const [rec, snap, picks] = await Promise.all([
-      api("GET", `/api/drafts/${S.draftId}/recommendations?limit=300${slotQ}${srcQ}`),
+      api("GET", `/api/drafts/${S.draftId}/recommendations?limit=300${slotQ}${srcQ}${scoreQ}`),
       api("GET", `/api/drafts/${S.draftId}`),
       api("GET", `/api/drafts/${S.draftId}/picks`),
     ]);
@@ -275,12 +278,21 @@ function renderSources() {
   const names = Object.keys(S.profiles);
   const profOpts = ['<option value="">Profiles…</option>']
     .concat(names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`)).join("");
-  el.innerHTML = `<span class="ctrl-lbl">Rank by</span>
+  const scoreOpts = Object.entries(SCORINGS)
+    .map(([k,v]) => `<option value="${k}" ${S.scoring===k?'selected':''}>${v}</option>`).join("");
+  el.innerHTML = `<span class="ctrl-lbl">Scoring</span>
+    <select id="scoringSel" onchange="setScoring(this.value)">${scoreOpts}</select>
+    <span class="ctrl-lbl" style="margin-left:8px">Rank by</span>
     <button class="src-chip ${S.selectedSources.size===0?'on':''}" onclick="allSources()">All</button>
     ${chips}
     <span style="flex:1"></span>
     <select id="profSel" onchange="loadProfile(this.value)">${profOpts}</select>
     <button class="ghost tiny" onclick="saveProfile()">Save</button>`;
+}
+function setScoring(v) {
+  S.scoring = v;
+  try { localStorage.setItem("wr_scoring_" + S.draftId, v); } catch {}
+  refresh();
 }
 function toggleSource(name) {
   // materialize "all" into an explicit set before toggling off one

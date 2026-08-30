@@ -43,6 +43,7 @@ def build_ranking_data(session: Session, scoring_format: str | None = None) -> R
     )
     if scoring_format:
         sets = [s for s in sets if s.kind == "adp" or s.scoring_format == scoring_format]
+    match_ids = {rs.id for rs in sets}  # flags are scoped to these sets too
 
     sources: dict[str, dict[str, RankRow]] = {}
     weights: dict[str, float] = {}
@@ -66,6 +67,9 @@ def build_ranking_data(session: Session, scoring_format: str | None = None) -> R
 
     flags: dict[str, dict[str, float | bool]] = {}
     for pf in session.scalars(select(PlayerFlag)):
+        # keep flags in scope: from a matching-format set, or manual (no set)
+        if pf.ranking_set_id is not None and pf.ranking_set_id not in match_ids:
+            continue
         value: float | bool | None = pf.value_bool if pf.value_bool is not None else pf.value_num
         if value is None:
             continue
