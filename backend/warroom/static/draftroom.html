@@ -42,7 +42,9 @@
   .clock { font-weight:700; color:#eef2f6; } .clock.alert { color:var(--amber); }
   .clock.now { color:var(--green); }
 
-  main { display:grid; grid-template-columns:340px 1fr 300px; gap:10px; padding:10px; height:calc(100vh - 96px); }
+  main { position:relative; display:grid; grid-template-columns:var(--left-w,340px) 1fr 300px; gap:10px; padding:10px; height:calc(100vh - 96px); }
+  .vresizer { position:absolute; top:10px; bottom:10px; left:calc(var(--left-w,340px) + 15px); width:5px; margin-left:-2px; border-radius:3px; cursor:col-resize; z-index:20; background:transparent; transition:background .12s; }
+  .vresizer:hover, .vresizer.active { background:var(--accent2); opacity:.6; }
   .col { background:var(--panel); border:1px solid var(--border); border-radius:10px; display:flex; flex-direction:column; overflow:hidden; }
   .col h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--fg2); margin:0; padding:10px 12px 8px; border-bottom:1px solid var(--border); }
   .scroll { overflow-y:auto; padding:6px; flex:1; }
@@ -142,6 +144,8 @@
     <div id="onclock"></div>
     <div class="cards" id="cards"></div>
   </section>
+
+  <div class="vresizer" id="vresizer" title="Drag to resize Best Available" onmousedown="startResize(event)"></div>
 
   <section class="col">
     <h2>My roster</h2>
@@ -420,6 +424,31 @@ function renderQueue() {
   $("queue").innerHTML = items.length ? items.join("") : '<div class="empty-note">Pin players with ★ to watch survival odds.</div>';
 }
 function toggleQ(id) { if (S.queue.has(id)) S.queue.delete(id); else S.queue.add(id); saveQueue(); renderBoard(); renderCards(); renderQueue(); }
+
+// draggable width for the Best-Available column (persisted)
+function startResize(e) {
+  e.preventDefault();
+  const mainEl = document.querySelector("main");
+  const rect = mainEl.getBoundingClientRect();
+  const handle = document.getElementById("vresizer");
+  handle.classList.add("active");
+  const onMove = (ev) => {
+    let w = ev.clientX - rect.left - 10;                 // minus main padding
+    w = Math.max(260, Math.min(rect.width - 640, w));    // leave room for cards + roster
+    document.documentElement.style.setProperty("--left-w", w + "px");
+  };
+  const onUp = () => {
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    document.body.style.userSelect = "";
+    handle.classList.remove("active");
+    try { localStorage.setItem("wr_leftw", document.documentElement.style.getPropertyValue("--left-w")); } catch {}
+  };
+  document.body.style.userSelect = "none";
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", onUp);
+}
+(function(){ try { const w = localStorage.getItem("wr_leftw"); if (w) document.documentElement.style.setProperty("--left-w", w.trim()); } catch {} })();
 
 // deep link ?draft=&slot=
 (function(){
