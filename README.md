@@ -6,20 +6,46 @@ multi-source rankings, league-adjusted value, and your personal preferences.
 
 Full specification: [docs/DESIGN.md](docs/DESIGN.md)
 
-## Run
+## Start War Room (Windows / PowerShell)
 
-```bash
-python -m venv .venv
-source .venv/Scripts/activate      # git bash on Windows; .venv\Scripts\activate in cmd
-pip install -e ".[dev]"
-python -m warroom                  # serves http://127.0.0.1:8734
+From the project folder, start the server (no venv activation needed — call the venv's
+Python directly):
+
+```powershell
+cd "C:\Users\Paul\OneDrive\Documents\GitHub\fantasy-war-room"
+.venv\Scripts\python.exe -m warroom
 ```
 
-Configuration via environment variables with the `WARROOM_` prefix (or a `.env` file):
-`WARROOM_PORT` (default 8734), `WARROOM_SEASON` (default 2026), `WARROOM_DB_PATH`
-(default `data/warroom.db`), `WARROOM_LOG_LEVEL`.
+Then open the app in your browser:
 
-Tests: `pytest`
+- **Draft Room:** http://127.0.0.1:8734/board
+- **Import rankings:** http://127.0.0.1:8734/import
+
+Stop the server with `Ctrl+C`. First launch syncs the ~12k-player Sleeper universe into
+`data/warroom.db` (a few seconds).
+
+### First-time setup (once)
+
+```powershell
+cd "C:\Users\Paul\OneDrive\Documents\GitHub\fantasy-war-room"
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -e ".[dev]"
+```
+
+### macOS / Linux
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+python -m warroom
+```
+
+### Configuration & tests
+
+Environment variables use the `WARROOM_` prefix (or a `.env` file): `WARROOM_PORT`
+(default 8734), `WARROOM_SEASON` (default 2026), `WARROOM_DB_PATH` (default
+`data/warroom.db`), `WARROOM_LOG_LEVEL`. Run tests with `pytest`.
 
 ## Following a draft (Phase 1)
 
